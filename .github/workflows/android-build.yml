@@ -20,15 +20,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Godot
+      - name: Setup Godot 4.3
         uses: chickensoft-games/setup-godot@v2
         with:
           version: '4.3.0'
           use-dotnet: false
 
+      - name: Show Godot version
+        run: godot --version
+
       - name: Install Android SDK requirements
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" \
             "build-tools;34.0.0" \
@@ -36,51 +40,35 @@ jobs:
             "cmake;3.10.2.4988404" \
             "ndk;23.2.8568313"
 
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "JAVA_HOME=$JAVA_HOME"
+
+          test -d "$ANDROID_HOME" || exit 1
+          test -d "$JAVA_HOME" || exit 1
+
+          echo "Installed Android platforms:"
+          ls -la "$ANDROID_HOME/platforms"
+
+          echo "Installed Android build tools:"
+          ls -la "$ANDROID_HOME/build-tools"
+
       - name: Install Godot Android export templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
-          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
-          unzip -q Godot_v4.3-stable_export_templates.tpz
-          cp -r templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.3.stable"
 
-      - name: Create debug keystore
-        run: |
-          keytool -genkeypair \
-            -keystore "$HOME/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p "$TEMPLATE_DIR"
 
-      - name: Configure Godot Android
-        run: |
-          mkdir -p ~/.config/godot
-          cat > ~/.config/godot/editor_settings-4.tres <<EOF
-          [gd_resource type="EditorSettings" format=3]
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz \
+            -O /tmp/godot_templates.tpz
 
-          [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/java_sdk_path = "$JAVA_HOME"
-          EOF
+          rm -rf /tmp/godot_templates
+          mkdir -p /tmp/godot_templates
 
-      - name: Create build folder
-        run: mkdir -p build
+          unzip -q /tmp/godot_templates.tpz -d /tmp/godot_templates
 
-      - name: Import project
-        run: godot --headless --editor --path . --quit
+          cp -R /tmp/godot_templates/templates/. "$TEMPLATE_DIR/"
 
-      - name: Build Android APK
-        env:
-          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /home/runner/debug.keystore
-          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
-          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
-        run: godot --headless --verbose --path . --export-debug "Android" build/ShockerOwnZ-GrowEmpire.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShockerOwnZ-GrowEmpire-Android
-          path: build/ShockerOwnZ-GrowEmpire.apk
+      - name: Verify Godot Android
