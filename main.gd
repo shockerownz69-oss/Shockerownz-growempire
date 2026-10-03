@@ -627,7 +627,7 @@ func advance_day():
 			p.problem = probs[
 				rng.randi_range(0, 2)
 			]
-
+   process_tycoon_day()
 	save_game()
 	refresh_stats()
 	show_grow()
