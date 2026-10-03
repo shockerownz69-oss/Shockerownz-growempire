@@ -76,6 +76,7 @@ var feed_slider: HSlider
 func _ready():
 	rng.randomize()
 	load_game()
+    tycoon_boot()
 	build_ui()
 	show_title()
 
@@ -1831,3 +1832,1669 @@ func load_game():
 
 		if not p.has("problem"):
 			p.problem = ""
+
+
+# ============================================================
+# SHOCKER OWNZ: GROW EMPIRE
+# ALPHA 0.11 — TYCOON EXPANSION
+# ============================================================
+
+var tycoon_started := false
+var total_revenue := 0
+var total_expenses := 0
+var employees: Array = []
+var side_claimed: Array = []
+var daily_claimed: Array = []
+var research_owned: Array = []
+var cups_won := 0
+var event_log: Array = []
+var last_bill_day := 0
+var last_daily_reset := 0
+
+
+const FACILITIES = [
+	{
+		"name": "Closet Start",
+		"cost": 0,
+		"slots": 4,
+		"overhead": 35,
+		"unlock": 1
+	},
+	{
+		"name": "Pro Tent",
+		"cost": 2500,
+		"slots": 6,
+		"overhead": 75,
+		"unlock": 2
+	},
+	{
+		"name": "Basement Lab",
+		"cost": 7500,
+		"slots": 8,
+		"overhead": 150,
+		"unlock": 3
+	},
+	{
+		"name": "Garage Facility",
+		"cost": 18000,
+		"slots": 10,
+		"overhead": 300,
+		"unlock": 4
+	},
+	{
+		"name": "Warehouse",
+		"cost": 50000,
+		"slots": 12,
+		"overhead": 650,
+		"unlock": 5
+	},
+	{
+		"name": "Project 0 Compound",
+		"cost": 125000,
+		"slots": 16,
+		"overhead": 1200,
+		"unlock": 6
+	}
+]
+
+
+const STAFF = [
+	{
+		"role": "Grow Tech",
+		"hire": 600,
+		"pay": 55,
+		"bonus": "Plant care + quality"
+	},
+	{
+		"role": "Breeding Tech",
+		"hire": 1200,
+		"pay": 90,
+		"bonus": "Genetics + breeding"
+	},
+	{
+		"role": "Sales Rep",
+		"hire": 1600,
+		"pay": 110,
+		"bonus": "Contracts + revenue"
+	},
+	{
+		"role": "Facility Manager",
+		"hire": 3000,
+		"pay": 180,
+		"bonus": "Lower overhead"
+	},
+	{
+		"role": "Genetics Researcher",
+		"hire": 5000,
+		"pay": 260,
+		"bonus": "Research + keeper hunting"
+	}
+]
+
+
+const RESEARCH = [
+	{
+		"id": "r1",
+		"name": "Efficient Lighting",
+		"cost": 1000,
+		"desc": "Reduce operating pressure and improve quality."
+	},
+	{
+		"id": "r2",
+		"name": "Climate Automation",
+		"cost": 2500,
+		"desc": "Improve consistency across the facility."
+	},
+	{
+		"id": "r3",
+		"name": "Genetic Analytics",
+		"cost": 5000,
+		"desc": "Boost Project 0 keeper hunting."
+	},
+	{
+		"id": "r4",
+		"name": "Contract Network",
+		"cost": 7500,
+		"desc": "Increase business reputation."
+	},
+	{
+		"id": "r5",
+		"name": "Project 0 Lab",
+		"cost": 15000,
+		"desc": "Unlock elite research status."
+	}
+]
+
+
+func tycoon_boot():
+	if tycoon_started:
+		return
+
+	tycoon_started = true
+
+	if last_daily_reset == 0:
+		last_daily_reset = day
+
+	if last_bill_day == 0:
+		last_bill_day = day
+
+	tycoon_load_extension()
+
+
+func facility_data() -> Dictionary:
+	var idx = clampi(
+		facility_level - 1,
+		0,
+		FACILITIES.size() - 1
+	)
+
+	return FACILITIES[idx]
+
+
+func employee_payroll() -> int:
+	var total := 0
+
+	for e in employees:
+		total += int(
+			e.get("pay", 0)
+		)
+
+	return total
+
+
+func business_value() -> int:
+	var genetic_value = (
+		keepers.size() * 900 +
+		mothers.size() * 500 +
+		crosses.size() * 1400
+	)
+
+	var asset_value = (
+		facility_level *
+		facility_level *
+		3500
+	)
+
+	var staff_value = (
+		employees.size() * 750
+	)
+
+	var brand_value = (
+		reputation * 75 +
+		cups_won * 5000
+	)
+
+	return maxi(
+		0,
+		cash +
+		genetic_value +
+		asset_value +
+		staff_value +
+		brand_value
+	)
+
+
+func show_empire():
+	tycoon_boot()
+	clear_content()
+
+	var p = panel()
+	content.add_child(p)
+
+	var v = VBoxContainer.new()
+	p.add_child(v)
+
+	v.add_child(
+		make_label(
+			"SHOCKER OWNZ • EMPIRE HQ",
+			29,
+			RED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			facility_data().name,
+			20,
+			GOLD
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"NET WORTH  $%d" % business_value(),
+			24,
+			WHITE
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Cash $%d  •  Revenue $%d  •  Expenses $%d" % [
+				cash,
+				total_revenue,
+				total_expenses
+			],
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Staff %d  •  Payroll $%d  •  Cups %d  •  Project 0 Keepers %d" % [
+				employees.size(),
+				employee_payroll(),
+				cups_won,
+				keepers.size()
+			],
+			15,
+			MUTED
+		)
+	)
+
+	var actions = GridContainer.new()
+	actions.columns = 2
+	v.add_child(actions)
+
+	var empire_actions = [
+		["FACILITIES", show_facilities],
+		["EMPLOYEES", show_employees],
+		["SIDE MISSIONS", show_side_missions],
+		["DAILY", show_daily],
+		["RESEARCH", show_research],
+		["COMPETE", show_competitions],
+		["FINANCES", show_finances],
+		["GROW ROOM", show_grow]
+	]
+
+	for item in empire_actions:
+		var b = make_button(
+			item[0],
+			item[1]
+		)
+
+		b.custom_minimum_size = Vector2(
+			310,
+			48
+		)
+
+		actions.add_child(b)
+
+	if event_log.size() > 0:
+		v.add_child(
+			make_label(
+				"LATEST EMPIRE NEWS",
+				18,
+				RED
+			)
+		)
+
+		for i in range(
+			mini(
+				3,
+				event_log.size()
+			)
+		):
+			v.add_child(
+				make_label(
+					"• " +
+					str(
+						event_log[
+							event_log.size() - 1 - i
+						]
+					),
+					14,
+					MUTED
+				)
+			)
+
+
+func show_facilities():
+	tycoon_boot()
+	clear_content()
+
+	content.add_child(
+		make_label(
+			"FACILITY EMPIRE",
+			28,
+			RED
+		)
+	)
+
+	for i in range(
+		FACILITIES.size()
+	):
+		var f = FACILITIES[i]
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		var status = "LOCKED"
+
+		if i < facility_level:
+			status = "OWNED"
+		elif i == facility_level:
+			status = "NEXT"
+
+		v.add_child(
+			make_label(
+				"%s • %s" % [
+					f.name,
+					status
+				],
+				19,
+				GOLD if i < facility_level else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"Capacity tier %d • Overhead $%d / 5 days" % [
+					f.slots,
+					f.overhead
+				],
+				14,
+				MUTED
+			)
+		)
+
+		if (
+			i == facility_level and
+			facility_level < FACILITIES.size()
+		):
+			var b = make_button(
+				"EXPAND • $%d" % f.cost,
+				func(idx = i):
+					buy_facility(idx)
+			)
+
+			b.disabled = (
+				level < int(f.unlock)
+			)
+
+			v.add_child(b)
+
+
+func buy_facility(idx: int):
+	if (
+		idx != facility_level or
+		idx >= FACILITIES.size()
+	):
+		return
+
+	var f = FACILITIES[idx]
+
+	if (
+		cash < int(f.cost) or
+		level < int(f.unlock)
+	):
+		return
+
+	cash -= int(f.cost)
+	total_expenses += int(f.cost)
+
+	facility_level += 1
+
+	room_two_unlocked = (
+		facility_level >= 2
+	)
+
+	event_log.append(
+		"Empire expanded into " +
+		str(f.name) +
+		"."
+	)
+
+	xp += 150 * facility_level
+	reputation += 10 * facility_level
+
+	level_up()
+	save_game()
+	tycoon_save_extension()
+	refresh_stats()
+	show_facilities()
+
+
+func show_employees():
+	tycoon_boot()
+	clear_content()
+
+	content.add_child(
+		make_label(
+			"EMPLOYEE MANAGEMENT",
+			28,
+			RED
+		)
+	)
+
+	content.add_child(
+		make_label(
+			"Staff strengthen your empire. Payroll is charged every 5 game days.",
+			14,
+			MUTED
+		)
+	)
+
+	for s in STAFF:
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		var count := 0
+
+		for e in employees:
+			if e.get(
+				"role",
+				""
+			) == s.role:
+				count += 1
+
+		v.add_child(
+			make_label(
+				"%s • EMPLOYED %d" % [
+					s.role,
+					count
+				],
+				18,
+				WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"%s • Hire $%d • Payroll $%d" % [
+					s.bonus,
+					s.hire,
+					s.pay
+				],
+				14,
+				MUTED
+			)
+		)
+
+		v.add_child(
+			make_button(
+				"HIRE " + str(s.role),
+				func(role = s.role):
+					hire_employee(role)
+			)
+		)
+
+
+func hire_employee(role: String):
+	for s in STAFF:
+		if s.role == role:
+			if cash < int(s.hire):
+				return
+
+			cash -= int(s.hire)
+			total_expenses += int(s.hire)
+
+			employees.append({
+				"role": s.role,
+				"pay": s.pay,
+				"skill": 1
+			})
+
+			reputation += 2
+
+			event_log.append(
+				"Hired a " +
+				role +
+				"."
+			)
+
+			save_game()
+			tycoon_save_extension()
+			refresh_stats()
+			show_employees()
+			return
+
+
+func process_tycoon_day():
+	tycoon_boot()
+
+	if day - last_bill_day >= 5:
+		var overhead = int(
+			facility_data().overhead
+		)
+
+		var payroll = employee_payroll()
+
+		var managers := 0
+
+		for e in employees:
+			if e.get(
+				"role",
+				""
+			) == "Facility Manager":
+				managers += 1
+
+		overhead = roundi(
+			overhead *
+			maxf(
+				0.70,
+				1.0 - managers * 0.05
+			)
+		)
+
+		if "r1" in research_owned:
+			overhead = roundi(
+				overhead * 0.90
+			)
+
+		var bill = (
+			overhead +
+			payroll
+		)
+
+		cash -= bill
+		total_expenses += bill
+		last_bill_day = day
+
+		event_log.append(
+			"Bills paid: -$%d." % bill
+		)
+
+	if (
+		day -
+		last_daily_reset >= 7
+	):
+		daily_claimed.clear()
+		last_daily_reset = day
+
+		event_log.append(
+			"Weekly challenges refreshed."
+		)
+
+	if rng.randf() < 0.13:
+		trigger_empire_event()
+
+	tycoon_save_extension()
+
+
+func trigger_empire_event():
+	var roll = rng.randi_range(
+		0,
+		5
+	)
+
+	match roll:
+		0:
+			var bonus = (
+				150 +
+				level * 40
+			)
+
+			cash += bonus
+			total_revenue += bonus
+
+			event_log.append(
+				"Surprise buyer bonus: +$%d." %
+				bonus
+			)
+
+		1:
+			var cost = (
+				75 +
+				facility_level * 40
+			)
+
+			cash -= cost
+			total_expenses += cost
+
+			event_log.append(
+				"Equipment repair: -$%d." %
+				cost
+			)
+
+		2:
+			reputation += 5
+
+			event_log.append(
+				"Word of mouth is spreading: +5 reputation."
+			)
+
+		3:
+			xp += 35
+			level_up()
+
+			event_log.append(
+				"Staff breakthrough: +35 XP."
+			)
+
+		4:
+			if keepers.size() > 0:
+				reputation += 8
+
+				event_log.append(
+					"Project 0 keeper gets attention: +8 reputation."
+				)
+
+		5:
+			var bonus = (
+				100 *
+				facility_level
+			)
+
+			cash += bonus
+			total_revenue += bonus
+
+			event_log.append(
+				"Local contract deposit: +$%d." %
+				bonus
+			)
+
+# ============================================================
+# ALPHA 0.11 — PART 2
+# SIDE MISSIONS + WEEKLY CHALLENGES
+# ============================================================
+
+
+func side_defs() -> Array:
+	var defs: Array = []
+
+	var types = [
+		["harvests", "Harvest Run"],
+		["rep", "Build The Name"],
+		["keepers", "Keeper Hunt"],
+		["mothers", "Mother Room"],
+		["crosses", "Breeding Order"],
+		["contracts", "Market Push"],
+		["cash", "Stack Capital"],
+		["level", "Grower Rank"]
+	]
+
+	for i in range(36):
+		var t = types[
+			i % types.size()
+		]
+
+		var tier = int(
+			i / 8
+		) + 1
+
+		var goal = tier
+
+		if t[0] == "harvests":
+			goal = tier * 3
+
+		elif t[0] == "rep":
+			goal = tier * 30
+
+		elif t[0] == "cash":
+			goal = tier * 5000
+
+		elif t[0] == "level":
+			goal = tier + 1
+
+		elif t[0] == "contracts":
+			goal = tier * 2
+
+		var id = "s%02d" % (
+			i + 1
+		)
+
+		defs.append({
+			"id": id,
+			"title":
+				str(t[1]) +
+				" " +
+				str(tier),
+			"desc":
+				"Build the empire and hit the target.",
+			"type": t[0],
+			"goal": goal,
+			"cash":
+				250 * tier +
+				i * 25,
+			"xp":
+				30 * tier
+		})
+
+	return defs
+
+
+func show_side_missions():
+	tycoon_boot()
+	clear_content()
+
+	content.add_child(
+		make_label(
+			"SIDE MISSIONS • %d/36" %
+				side_claimed.size(),
+			28,
+			RED
+		)
+	)
+
+	content.add_child(
+		make_label(
+			"Optional contracts, challenges and empire objectives.",
+			14,
+			GOLD
+		)
+	)
+
+	for m in side_defs():
+		var done = (
+			m.id in side_claimed
+		)
+
+		var val = mission_value(
+			m.type
+		)
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				(
+					"✓ "
+					if done
+					else "◆ "
+				) +
+				m.title,
+				18,
+				GREEN
+				if done
+				else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"%s  •  %d/%d" % [
+					m.desc,
+					mini(
+						val,
+						int(m.goal)
+					),
+					m.goal
+				],
+				14,
+				MUTED
+			)
+		)
+
+		var bar = ProgressBar.new()
+
+		bar.max_value = int(
+			m.goal
+		)
+
+		bar.value = mini(
+			val,
+			int(m.goal)
+		)
+
+		bar.custom_minimum_size = Vector2(
+			0,
+			18
+		)
+
+		v.add_child(bar)
+
+		v.add_child(
+			make_label(
+				"REWARD • $%d + %d XP" % [
+					m.cash,
+					m.xp
+				],
+				14,
+				GOLD
+			)
+		)
+
+		if (
+			not done and
+			val >= int(m.goal)
+		):
+			v.add_child(
+				make_button(
+					"CLAIM SIDE MISSION",
+					func(id = m.id):
+						claim_side(id)
+				)
+			)
+
+
+func claim_side(id: String):
+	if id in side_claimed:
+		return
+
+	for m in side_defs():
+		if (
+			m.id == id and
+			mission_value(
+				m.type
+			) >= int(m.goal)
+		):
+			side_claimed.append(id)
+
+			cash += int(
+				m.cash
+			)
+
+			total_revenue += int(
+				m.cash
+			)
+
+			xp += int(
+				m.xp
+			)
+
+			reputation += 1
+
+			event_log.append(
+				"Side mission complete: " +
+				str(m.title) +
+				"."
+			)
+
+			level_up()
+			save_game()
+			tycoon_save_extension()
+			refresh_stats()
+			show_side_missions()
+			return
+
+
+func daily_defs() -> Array:
+	var scale = maxi(
+		1,
+		level
+	)
+
+	return [
+		{
+			"id": "d1",
+			"title": "Clock In",
+			"desc":
+				"Keep the operation moving for 2 more days.",
+			"type": "day",
+			"goal":
+				last_daily_reset + 2,
+			"cash":
+				150 * scale,
+			"xp": 25
+		},
+		{
+			"id": "d2",
+			"title": "Production Push",
+			"desc":
+				"Complete another harvest.",
+			"type": "harvests",
+			"goal":
+				maxi(
+					1,
+					mission_harvests + 1
+				),
+			"cash":
+				200 * scale,
+			"xp": 35
+		},
+		{
+			"id": "d3",
+			"title": "Build The Brand",
+			"desc":
+				"Push your reputation higher.",
+			"type": "rep",
+			"goal":
+				reputation + 5,
+			"cash":
+				250 * scale,
+			"xp": 40
+		}
+	]
+
+
+func show_daily():
+	tycoon_boot()
+	clear_content()
+
+	content.add_child(
+		make_label(
+			"WEEKLY CHALLENGES",
+			28,
+			RED
+		)
+	)
+
+	content.add_child(
+		make_label(
+			"New objectives refresh every 7 in-game days.",
+			14,
+			GOLD
+		)
+	)
+
+	for m in daily_defs():
+		var done = (
+			m.id in daily_claimed
+		)
+
+		var val = mission_value(
+			m.type
+		)
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				(
+					"✓ "
+					if done
+					else "◆ "
+				) +
+				m.title,
+				18,
+				GREEN
+				if done
+				else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				m.desc,
+				14,
+				MUTED
+			)
+		)
+
+		var bar = ProgressBar.new()
+
+		bar.max_value = int(
+			m.goal
+		)
+
+		bar.value = mini(
+			val,
+			int(m.goal)
+		)
+
+		bar.custom_minimum_size = Vector2(
+			0,
+			18
+		)
+
+		v.add_child(bar)
+
+		v.add_child(
+			make_label(
+				"%d/%d • REWARD $%d + %d XP" % [
+					mini(
+						val,
+						int(m.goal)
+					),
+					m.goal,
+					m.cash,
+					m.xp
+				],
+				14,
+				GOLD
+			)
+		)
+
+		if (
+			not done and
+			val >= int(m.goal)
+		):
+			v.add_child(
+				make_button(
+					"CLAIM CHALLENGE",
+					func(id = m.id):
+						claim_daily(id)
+				)
+			)
+
+
+func claim_daily(id: String):
+	if id in daily_claimed:
+		return
+
+	for m in daily_defs():
+		if (
+			m.id == id and
+			mission_value(
+				m.type
+			) >= int(m.goal)
+		):
+			daily_claimed.append(id)
+
+			cash += int(
+				m.cash
+			)
+
+			total_revenue += int(
+				m.cash
+			)
+
+			xp += int(
+				m.xp
+			)
+
+			reputation += 2
+
+			event_log.append(
+				"Weekly challenge complete: " +
+				str(m.title) +
+				"."
+			)
+
+			level_up()
+			save_game()
+			tycoon_save_extension()
+			refresh_stats()
+			show_daily()
+			return
+
+
+# ============================================================
+# RESEARCH SYSTEM
+# ============================================================
+
+
+func show_research():
+	tycoon_boot()
+	clear_content()
+
+	content.add_child(
+		make_label(
+			"PROJECT 0 • RESEARCH",
+			28,
+			RED
+		)
+	)
+
+	content.add_child(
+		make_label(
+			"Invest empire profits into permanent technology.",
+			14,
+			GOLD
+		)
+	)
+
+	for r in RESEARCH:
+		var owned = (
+			r.id in research_owned
+		)
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				(
+					"✓ "
+					if owned
+					else "◆ "
+				) +
+				str(r.name),
+				18,
+				GREEN
+				if owned
+				else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				str(r.desc),
+				14,
+				MUTED
+			)
+		)
+
+		if not owned:
+			v.add_child(
+				make_button(
+					"RESEARCH • $%d" %
+						r.cost,
+					func(id = r.id):
+						buy_research(id)
+				)
+			)
+
+
+func buy_research(id: String):
+	for r in RESEARCH:
+		if (
+			r.id == id and
+			id not in research_owned
+		):
+			if cash < int(
+				r.cost
+			):
+				return
+
+			cash -= int(
+				r.cost
+			)
+
+			total_expenses += int(
+				r.cost
+			)
+
+			research_owned.append(
+				id
+			)
+
+			xp += 100
+			reputation += 5
+
+			level_up()
+
+			event_log.append(
+				"Research complete: " +
+				str(r.name) +
+				"."
+			)
+
+			save_game()
+			tycoon_save_extension()
+			refresh_stats()
+			show_research()
+			return
+
+# ============================================================
+# ALPHA 0.11 — PART 3
+# COMPETITIONS + FINANCES + TYCOON SAVE SYSTEM
+# ============================================================
+
+
+func show_competitions():
+	tycoon_boot()
+	clear_content()
+
+	content.add_child(
+		make_label(
+			"PROJECT 0 • COMPETITION CIRCUIT",
+			28,
+			RED
+		)
+	)
+
+	content.add_child(
+		make_label(
+			"Put your best genetics against the competition.",
+			14,
+			GOLD
+		)
+	)
+
+	var events = [
+		{
+			"name": "Local Grow-Off",
+			"need": 1,
+			"fee": 250,
+			"q": 82,
+			"reward": 1500
+		},
+		{
+			"name": "Regional Genetics Cup",
+			"need": 2,
+			"fee": 1000,
+			"q": 88,
+			"reward": 6000
+		},
+		{
+			"name": "Project 0 Invitational",
+			"need": 4,
+			"fee": 5000,
+			"q": 94,
+			"reward": 25000
+		}
+	]
+
+	for e in events:
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				str(e.name),
+				19,
+				GOLD
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"Need %d keeper(s) • Entry $%d" % [
+					e.need,
+					e.fee
+				],
+				14,
+				MUTED
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"Target Q%d • Prize $%d" % [
+					e.q,
+					e.reward
+				],
+				14,
+				WHITE
+			)
+		)
+
+		var enter = make_button(
+			"ENTER COMPETITION",
+			func(ev = e):
+				enter_competition(ev)
+		)
+
+		enter.disabled = (
+			cash < int(e.fee) or
+			keepers.size() < int(e.need)
+		)
+
+		v.add_child(enter)
+
+	content.add_child(
+		make_label(
+			"CAREER CUP WINS • %d" %
+				cups_won,
+			18,
+			RED
+		)
+	)
+
+
+func enter_competition(
+	e: Dictionary
+):
+	if (
+		cash < int(e.fee) or
+		keepers.size() < int(e.need)
+	):
+		return
+
+	cash -= int(e.fee)
+	total_expenses += int(e.fee)
+
+	var best := 0
+
+	for k in keepers:
+		best = maxi(
+			best,
+			int(
+				k.get(
+					"q",
+					0
+				)
+			)
+		)
+
+	var staff_bonus := 0
+
+	for emp in employees:
+		if emp.get(
+			"role",
+			""
+		) == "Genetics Researcher":
+			staff_bonus += 1
+
+	var research_bonus := 0
+
+	if "r3" in research_owned:
+		research_bonus = 2
+
+	var score = (
+		best +
+		staff_bonus +
+		research_bonus +
+		rng.randi_range(
+			-3,
+			5
+		)
+	)
+
+	if score >= int(e.q):
+		cash += int(
+			e.reward
+		)
+
+		total_revenue += int(
+			e.reward
+		)
+
+		cups_won += 1
+		reputation += 20
+		xp += 200
+
+		event_log.append(
+			"CUP WINNER: " +
+				str(e.name) +
+				"!"
+		)
+
+		unlock_achievement(
+			"Cup Winner"
+		)
+
+	else:
+		reputation += 2
+		xp += 25
+
+		event_log.append(
+			"Strong showing at " +
+				str(e.name) +
+				"."
+		)
+
+	level_up()
+	save_game()
+	tycoon_save_extension()
+	refresh_stats()
+	show_competitions()
+
+
+# ============================================================
+# BUSINESS FINANCE DASHBOARD
+# ============================================================
+
+
+func show_finances():
+	tycoon_boot()
+	clear_content()
+
+	var p = panel()
+	content.add_child(p)
+
+	var v = VBoxContainer.new()
+	p.add_child(v)
+
+	v.add_child(
+		make_label(
+			"BUSINESS FINANCES",
+			28,
+			RED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			facility_data().name,
+			17,
+			GOLD
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Cash On Hand",
+			14,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"$%d" % cash,
+			30,
+			WHITE
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"LIFETIME REVENUE • $%d" %
+				total_revenue,
+			17,
+			GREEN
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"LIFETIME EXPENSES • $%d" %
+				total_expenses,
+			17,
+			RED
+		)
+	)
+
+	var profit = (
+		total_revenue -
+		total_expenses
+	)
+
+	v.add_child(
+		make_label(
+			"LIFETIME PROFIT • $%d" %
+				profit,
+			17,
+			GOLD
+			if profit >= 0
+			else RED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"BUSINESS VALUATION",
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"$%d" %
+				business_value(),
+			27,
+			GOLD
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Facility overhead • $%d every 5 days" %
+				int(
+					facility_data().overhead
+				),
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Employee payroll • $%d every 5 days" %
+				employee_payroll(),
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Employees • %d" %
+				employees.size(),
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Cup Championships • %d" %
+				cups_won,
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_label(
+			"Project 0 Keepers • %d" %
+				keepers.size(),
+			15,
+			MUTED
+		)
+	)
+
+	v.add_child(
+		make_button(
+			"BACK TO EMPIRE HQ",
+			show_empire
+		)
+	)
+
+
+# ============================================================
+# TYCOON SAVE / LOAD
+# ============================================================
+
+
+func tycoon_save_extension():
+	var data = {
+		"total_revenue":
+			total_revenue,
+
+		"total_expenses":
+			total_expenses,
+
+		"employees":
+			employees,
+
+		"side_claimed":
+			side_claimed,
+
+		"daily_claimed":
+			daily_claimed,
+
+		"research_owned":
+			research_owned,
+
+		"cups_won":
+			cups_won,
+
+		"event_log":
+			event_log,
+
+		"last_bill_day":
+			last_bill_day,
+
+		"last_daily_reset":
+			last_daily_reset
+	}
+
+	var f = FileAccess.open(
+		"user://grow_empire_tycoon.json",
+		FileAccess.WRITE
+	)
+
+	if f:
+		f.store_string(
+			JSON.stringify(
+				data
+			)
+		)
+
+
+func tycoon_load_extension():
+	if not FileAccess.file_exists(
+		"user://grow_empire_tycoon.json"
+	):
+		return
+
+	var f = FileAccess.open(
+		"user://grow_empire_tycoon.json",
+		FileAccess.READ
+	)
+
+	if not f:
+		return
+
+	var d = JSON.parse_string(
+		f.get_as_text()
+	)
+
+	if typeof(d) != TYPE_DICTIONARY:
+		return
+
+	total_revenue = int(
+		d.get(
+			"total_revenue",
+			0
+		)
+	)
+
+	total_expenses = int(
+		d.get(
+			"total_expenses",
+			0
+		)
+	)
+
+	employees = d.get(
+		"employees",
+		[]
+	)
+
+	side_claimed = d.get(
+		"side_claimed",
+		[]
+	)
+
+	daily_claimed = d.get(
+		"daily_claimed",
+		[]
+	)
+
+	research_owned = d.get(
+		"research_owned",
+		[]
+	)
+
+	cups_won = int(
+		d.get(
+			"cups_won",
+			0
+		)
+	)
+
+	event_log = d.get(
+		"event_log",
+		[]
+	)
+
+	last_bill_day = int(
+		d.get(
+			"last_bill_day",
+			day
+		)
+	)
+
+	last_daily_reset = int(
+		d.get(
+			"last_daily_reset",
+			day
+		)
+	)
