@@ -226,13 +226,25 @@ const MUTATIONS=[
 
 
 func _ready():
-	rng.randomize()
+	var background=ColorRect.new()
+	background.set_anchors_and_offsets_preset(
+		Control.PRESET_FULL_RECT
+	)
+	background.color=Color("#080808")
+	add_child(background)
 
-	build_ui()
-	show_title()
-
-	call_deferred("finish_startup")
-
+	var test=Label.new()
+	test.text="SHOCKER OWNZ\nGROW EMPIRE\n\nANDROID UI TEST PASSED"
+	test.position=Vector2(60,200)
+	test.size=Vector2(600,400)
+	test.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	test.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	test.add_theme_font_size_override("font_size",32)
+	test.add_theme_color_override(
+		"font_color",
+		Color("#d30b16")
+	)
+	add_child(test)
 
 func finish_startup():
 	load_game()
