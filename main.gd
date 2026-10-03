@@ -227,11 +227,14 @@ const MUTATIONS=[
 
 func _ready():
 	rng.randomize()
+
 	load_game()
 	tycoon_load()
-	migrate_genetics()
+
 	build_ui()
 	show_title()
+
+	call_deferred("safe_migrate_genetics")
 
 
 func make_label(
