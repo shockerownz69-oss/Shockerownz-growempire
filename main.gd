@@ -183,6 +183,7 @@ func build_ui():
 	outer.add_child(nav)
 
 	var nav_items = [
+        ["Empire",show_Empire],
 		["GROW", show_grow],
 		["GENETICS", show_genetics],
 		["BREED", show_breeding],
