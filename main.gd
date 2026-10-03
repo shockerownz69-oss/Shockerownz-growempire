@@ -607,7 +607,35 @@ func advance_day():
 	day += 1
 
 	for p in plants:
+		p.age func advance_day():
+	day += 1
+
+	for p in plants:
 		p.age = min(
+			p.age + 1,
+			p.days
+		)
+
+		p.water = maxi(
+			0,
+			int(p.get("water", 100)) - rng.randi_range(13, 23)
+		)
+
+		if p.get("problem", "") == "" and rng.randf() < 0.08:
+			var probs = [
+				"Light Stress",
+				"Nutrient Imbalance",
+				"Pests"
+			]
+
+			p.problem = probs[
+				rng.randi_range(0, 2)
+			]
+
+	process_tycoon_day()
+	save_game()
+	refresh_stats()
+	show_grow()= min(
 			p.age + 1,
 			p.days
 		)
