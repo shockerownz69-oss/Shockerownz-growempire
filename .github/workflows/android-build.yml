@@ -30,8 +30,10 @@ jobs:
         run: |
           echo "Godot:"
           godot --version
+
           echo "Java:"
           java -version
+
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "JAVA_HOME=$JAVA_HOME"
 
@@ -75,22 +77,6 @@ jobs:
 
           echo "Android export templates OK"
 
-      - name: Create debug keystore
-        run: |
-          rm -f "$HOME/debug.keystore"
-
-          keytool -genkeypair \
-            -keystore "$HOME/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-
-          test -f "$HOME/debug.keystore"
-
       - name: Configure Godot Android paths
         run: |
           mkdir -p "$HOME/.config/godot"
@@ -103,6 +89,7 @@ jobs:
             "export/android/java_sdk_path = \"$JAVA_HOME\"" \
             > "$HOME/.config/godot/editor_settings-4.tres"
 
+          echo "Godot Android configuration:"
           cat "$HOME/.config/godot/editor_settings-4.tres"
 
       - name: Verify project configuration
@@ -110,25 +97,32 @@ jobs:
           echo "===== PROJECT ====="
           cat project.godot
 
-          echo "===== ANDROID EXPORT PRESET ====="
+          echo "===== EXPORT PRESET ====="
           cat export_presets.cfg
 
           echo "===== ANDROID SDK ====="
           ls -lah "$ANDROID_HOME/platforms/android-34"
           ls -lah "$ANDROID_HOME/build-tools/34.0.0"
 
-          echo "===== DEBUG KEYSTORE ====="
-          ls -lah "$HOME/debug.keystore"
-
       - name: Import Godot project
         run: |
-          godot --headless --editor --verbose --path . --quit
+          godot \
+            --headless \
+            --editor \
+            --verbose \
+            --path . \
+            --quit
+
+      - name: Verify Godot debug keystore
+        run: |
+          echo "===== GODOT KEYSTORE ====="
+
+          test -f "$HOME/.local/share/godot/keystores/debug.keystore"
+
+          ls -lah \
+            "$HOME/.local/share/godot/keystores/debug.keystore"
 
       - name: Build Android APK
-        env:
-          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /home/runner/debug.keystore
-          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
-          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
           mkdir -p build
 
@@ -142,7 +136,11 @@ jobs:
       - name: Verify APK
         run: |
           test -f "build/ShockerOwnZ-GrowEmpire.apk"
-          ls -lh "build/ShockerOwnZ-GrowEmpire.apk"
+
+          echo "APK CREATED SUCCESSFULLY"
+
+          ls -lh \
+            "build/ShockerOwnZ-GrowEmpire.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
