@@ -113,6 +113,17 @@ jobs:
             --path . \
             --quit
 
+      - name: Smoke test game startup
+        run: |
+          echo "===== STARTING GAME SMOKE TEST ====="
+
+          godot \
+            --headless \
+            --path . \
+            --quit-after 3
+
+          echo "===== SMOKE TEST FINISHED ====="
+
       - name: Verify Godot debug keystore
         run: |
           echo "===== GODOT KEYSTORE ====="
