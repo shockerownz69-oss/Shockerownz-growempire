@@ -1,21 +1,22 @@
 extends Control
 
 const RED = Color("#d30b16")
-const RED_DARK = Color("#6d070d")
 const DARK = Color("#080808")
 const PANEL = Color("#171717")
-const PANEL_2 = Color("#222222")
 const WHITE = Color("#ffffff")
 const MUTED = Color("#b7b7b7")
 const GREEN = Color("#4ee17a")
 const GOLD = Color("#e7b94a")
+
 const SAVE_PATH = "user://grow_empire_save.json"
+const TYCOON_SAVE_PATH = "user://grow_empire_tycoon.json"
 
 var cash := 500
 var xp := 0
 var level := 1
 var reputation := 0
 var day := 1
+
 var plants: Array = []
 var keepers: Array = []
 var mothers: Array = []
@@ -24,15 +25,40 @@ var inventory: Array = []
 var cured_inventory: Array = []
 var achievements: Array = []
 var mission_claimed: Array = []
+
 var mission_harvests := 0
 var contracts_completed := 0
 var facility_level := 1
 var room_two_unlocked := false
+
 var owned_upgrades := {
 	"LED Upgrade": false,
 	"Environment Controller": false
 }
+
+# TYCOON SYSTEM
+var total_revenue := 0
+var total_expenses := 0
+var employees: Array = []
+var side_claimed: Array = []
+var weekly_claimed: Array = []
+var research_owned: Array = []
+var cups_won := 0
+var event_log: Array = []
+var last_bill_day := 0
+var weekly_start_day := 1
+var weekly_harvest_start := 0
+var weekly_rep_start := 0
+
 var rng := RandomNumberGenerator.new()
+
+var content: VBoxContainer
+var stats_label: Label
+var log_label: Label
+var light_slider: HSlider
+var rh_slider: HSlider
+var feed_slider: HSlider
+
 
 var genetics = {
 	"GG4 S1": {
@@ -65,18 +91,115 @@ var genetics = {
 	}
 }
 
-var content: VBoxContainer
-var stats_label: Label
-var log_label: Label
-var light_slider: HSlider
-var rh_slider: HSlider
-var feed_slider: HSlider
+
+const FACILITIES = [
+	{
+		"name": "Closet Start",
+		"cost": 0,
+		"slots": 4,
+		"overhead": 35,
+		"unlock": 1
+	},
+	{
+		"name": "Pro Tent",
+		"cost": 2500,
+		"slots": 6,
+		"overhead": 75,
+		"unlock": 2
+	},
+	{
+		"name": "Basement Lab",
+		"cost": 7500,
+		"slots": 8,
+		"overhead": 150,
+		"unlock": 3
+	},
+	{
+		"name": "Garage Facility",
+		"cost": 18000,
+		"slots": 10,
+		"overhead": 300,
+		"unlock": 4
+	},
+	{
+		"name": "Warehouse",
+		"cost": 50000,
+		"slots": 12,
+		"overhead": 650,
+		"unlock": 5
+	},
+	{
+		"name": "Project 0 Compound",
+		"cost": 125000,
+		"slots": 16,
+		"overhead": 1200,
+		"unlock": 6
+	}
+]
+
+
+const STAFF = [
+	{
+		"role": "Grow Tech",
+		"hire": 600,
+		"pay": 55
+	},
+	{
+		"role": "Breeding Tech",
+		"hire": 1200,
+		"pay": 90
+	},
+	{
+		"role": "Sales Rep",
+		"hire": 1600,
+		"pay": 110
+	},
+	{
+		"role": "Facility Manager",
+		"hire": 3000,
+		"pay": 180
+	},
+	{
+		"role": "Genetics Researcher",
+		"hire": 5000,
+		"pay": 260
+	}
+]
+
+
+const RESEARCH = [
+	{
+		"id": "r1",
+		"name": "Efficient Lighting",
+		"cost": 1000
+	},
+	{
+		"id": "r2",
+		"name": "Climate Automation",
+		"cost": 2500
+	},
+	{
+		"id": "r3",
+		"name": "Genetic Analytics",
+		"cost": 5000
+	},
+	{
+		"id": "r4",
+		"name": "Contract Network",
+		"cost": 7500
+	},
+	{
+		"id": "r5",
+		"name": "Project 0 Lab",
+		"cost": 15000
+	}
+]
 
 
 func _ready():
 	rng.randomize()
 	load_game()
-    tycoon_boot()
+	tycoon_load()
 	build_ui()
 	show_title()
 
@@ -183,14 +306,13 @@ func build_ui():
 	outer.add_child(nav)
 
 	var nav_items = [
-        ["EMPIRE", show_empire],
+		["EMPIRE", show_empire],
 		["GROW", show_grow],
 		["GENETICS", show_genetics],
 		["BREED", show_breeding],
 		["CURE", show_cure],
 		["PROJECT 0", show_vault],
 		["MARKET", show_market],
-		["SHOP", show_shop],
 		["MISSIONS", show_missions]
 	]
 
@@ -232,7 +354,7 @@ func show_title():
 	v.add_theme_constant_override("separation", 12)
 	hero.add_child(v)
 
-	var t = make_label("⚠  SHOCKER OWNZ  ⚠", 24, RED)
+	var t = make_label("⚠ SHOCKER OWNZ ⚠", 24, RED)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
 
@@ -240,10 +362,10 @@ func show_title():
 	g.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(g)
 
-	var art = TextureRect.new()
 	var tex = load("res://shocker_ownz_reference.jpg")
 
 	if tex:
+		var art = TextureRect.new()
 		art.texture = tex
 		art.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -258,19 +380,381 @@ func show_title():
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(sub)
 
+	v.add_child(make_button("ENTER THE EMPIRE", show_empire))
 	v.add_child(make_button("ENTER THE GROW", show_grow))
 	v.add_child(make_button("PROJECT 0 CAMPAIGN", show_missions))
 	v.add_child(make_button("ACHIEVEMENTS", show_achievements))
 
 
+# =========================================================
+# EMPIRE HQ
+# =========================================================
+
+func facility_data() -> Dictionary:
+	var idx = clampi(
+		facility_level - 1,
+		0,
+		FACILITIES.size() - 1
+	)
+	return FACILITIES[idx]
+
+
+func grow_capacity() -> int:
+	return int(facility_data()["slots"])
+
+
+func employee_payroll() -> int:
+	var total := 0
+
+	for e in employees:
+		total += int(e.get("pay", 0))
+
+	return total
+
+
+func business_value() -> int:
+	var value = cash
+	value += total_revenue
+	value += keepers.size() * 800
+	value += mothers.size() * 500
+	value += crosses.size() * 1000
+	value += cups_won * 5000
+	value += facility_level * 2500
+	value += employees.size() * 1000
+	value += research_owned.size() * 1500
+	return maxi(0, value)
+
+
+func show_empire():
+	clear_content()
+
+	var p = panel()
+	content.add_child(p)
+
+	var v = VBoxContainer.new()
+	p.add_child(v)
+
+	v.add_child(make_label("EMPIRE HQ", 30, RED))
+	v.add_child(
+		make_label(
+			"SHOCKER OWNZ • PROJECT 0",
+			16,
+			GOLD
+		)
+	)
+
+	var f = facility_data()
+
+	v.add_child(
+		make_label(
+			"%s\nGrow Sites: %d\nEmployees: %d\nPayroll: $%d\nEmpire Value: $%d" % [
+				f["name"],
+				grow_capacity(),
+				employees.size(),
+				employee_payroll(),
+				business_value()
+			],
+			17
+		)
+	)
+
+	var grid = GridContainer.new()
+	grid.columns = 2
+	v.add_child(grid)
+
+	var buttons = [
+		["FACILITIES", show_facilities],
+		["EMPLOYEES", show_employees],
+		["SIDE MISSIONS", show_side_missions],
+		["WEEKLY", show_weekly],
+		["RESEARCH", show_research],
+		["COMPETE", show_competitions],
+		["FINANCES", show_finances],
+		["EQUIPMENT", show_shop]
+	]
+
+	for item in buttons:
+		grid.add_child(
+			make_button(
+				item[0],
+				item[1]
+			)
+		)
+
+	if not event_log.is_empty():
+		v.add_child(make_label("EMPIRE NEWS", 20, RED))
+
+		var start = maxi(0, event_log.size() - 3)
+
+		for i in range(start, event_log.size()):
+			v.add_child(
+				make_label(
+					"• " + str(event_log[i]),
+					14,
+					MUTED
+				)
+			)
+
+
+func show_facilities():
+	clear_content()
+	content.add_child(make_label("FACILITY EXPANSION", 29, RED))
+
+	for i in range(FACILITIES.size()):
+		var f = FACILITIES[i]
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		var status = "LOCKED"
+
+		if i < facility_level:
+			status = "OWNED"
+		elif i == facility_level:
+			status = "NEXT FACILITY"
+
+		v.add_child(
+			make_label(
+				"%s • %s" % [
+					f["name"],
+					status
+				],
+				20,
+				GREEN if i < facility_level else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"Grow Sites %d • Overhead $%d • Level %d" % [
+					f["slots"],
+					f["overhead"],
+					f["unlock"]
+				],
+				14,
+				MUTED
+			)
+		)
+
+		if i == facility_level and i < FACILITIES.size():
+			var b = make_button(
+				"EXPAND • $%d" % f["cost"],
+				func(idx = i): buy_facility(idx)
+			)
+
+			b.disabled = level < int(f["unlock"])
+			v.add_child(b)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func buy_facility(idx: int):
+	if idx != facility_level:
+		return
+
+	if idx >= FACILITIES.size():
+		return
+
+	var f = FACILITIES[idx]
+
+	if level < int(f["unlock"]):
+		return
+
+	if cash < int(f["cost"]):
+		return
+
+	cash -= int(f["cost"])
+	total_expenses += int(f["cost"])
+	facility_level += 1
+
+	if facility_level >= 2:
+		room_two_unlocked = true
+		unlock_achievement("Empire Builder")
+
+	save_all()
+	refresh_stats()
+	show_facilities()
+
+
+func show_employees():
+	clear_content()
+	content.add_child(make_label("EMPIRE STAFF", 29, RED))
+
+	content.add_child(
+		make_label(
+			"Employees %d • Payroll $%d" % [
+				employees.size(),
+				employee_payroll()
+			],
+			16,
+			GOLD
+		)
+	)
+
+	for s in STAFF:
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				"%s\nHire $%d • Payroll $%d" % [
+					s["role"],
+					s["hire"],
+					s["pay"]
+				],
+				17
+			)
+		)
+
+		v.add_child(
+			make_button(
+				"HIRE " + str(s["role"]),
+				func(role = s["role"]):
+					hire_employee(role)
+			)
+		)
+
+	if not employees.is_empty():
+		content.add_child(make_label("CURRENT CREW", 20, RED))
+
+		for e in employees:
+			content.add_child(
+				make_label(
+					"• %s • Skill %d • $%d payroll" % [
+						e["role"],
+						e["skill"],
+						e["pay"]
+					],
+					15,
+					MUTED
+				)
+			)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func hire_employee(role: String):
+	for s in STAFF:
+		if s["role"] == role:
+			if cash < int(s["hire"]):
+				return
+
+			cash -= int(s["hire"])
+			total_expenses += int(s["hire"])
+
+			employees.append({
+				"role": role,
+				"pay": int(s["pay"]),
+				"skill": rng.randi_range(55, 85)
+			})
+
+			save_all()
+			refresh_stats()
+			show_employees()
+			return
+
+
+func process_tycoon_day():
+	if day - last_bill_day >= 5:
+		var bills = int(facility_data()["overhead"])
+		bills += employee_payroll()
+
+		if "r1" in research_owned:
+			bills = roundi(bills * 0.90)
+
+		cash -= bills
+		total_expenses += bills
+		last_bill_day = day
+
+		event_log.append(
+			"Day %d bills paid: $%d" % [
+				day,
+				bills
+			]
+		)
+
+	if day - weekly_start_day >= 7:
+		weekly_start_day = day
+		weekly_harvest_start = mission_harvests
+		weekly_rep_start = reputation
+		weekly_claimed.clear()
+
+		event_log.append(
+			"New Project 0 weekly challenges available."
+		)
+
+	if rng.randf() < 0.13:
+		trigger_empire_event()
+
+	tycoon_save()
+
+
+func trigger_empire_event():
+	var roll = rng.randi_range(0, 5)
+
+	match roll:
+		0:
+			var bonus = 150 + level * 40
+			cash += bonus
+			total_revenue += bonus
+			event_log.append(
+				"Local buzz increased sales +$%d." % bonus
+			)
+
+		1:
+			var cost = 75 + facility_level * 35
+			cash -= cost
+			total_expenses += cost
+			event_log.append(
+				"Equipment repair -$%d." % cost
+			)
+
+		2:
+			reputation += 4
+			event_log.append(
+				"Project 0 genetics gained +4 reputation."
+			)
+
+		3:
+			xp += 35
+			level_up()
+			event_log.append(
+				"Crew training earned +35 XP."
+			)
+
+		4:
+			var bonus = 100 + keepers.size() * 25
+			cash += bonus
+			total_revenue += bonus
+			event_log.append(
+				"Collector paid a premium +$%d." % bonus
+			)
+
+		5:
+			event_log.append(
+				"Quiet day. The empire keeps moving."
+			)
+
+	refresh_stats()
+
+
+# =========================================================
+# GROW
+# =========================================================
+
 func stage_info(p: Dictionary) -> Array:
-	if p.age >= p.days:
+	if p["age"] >= p["days"]:
 		return ["✦", "HARVEST READY", GOLD]
 
-	if p.age > p.days * 0.45:
+	if p["age"] > p["days"] * 0.45:
 		return ["♣", "FLOWER", Color("#8eea75")]
 
-	if p.age > 1:
+	if p["age"] > 1:
 		return ["♠", "VEG", GREEN]
 
 	return ["◆", "SEEDLING", Color("#a9e6b8")]
@@ -287,7 +771,11 @@ func show_grow():
 
 	bv.add_child(
 		make_label(
-			"ROOM %02d • UNDERGROUND GROW" % facility_level,
+			"%s • %d/%d SITES" % [
+				facility_data()["name"],
+				plants.size(),
+				grow_capacity()
+			],
 			25,
 			RED
 		)
@@ -301,24 +789,13 @@ func show_grow():
 		)
 	)
 
-	if room_two_unlocked:
-		bv.add_child(
-			make_label(
-				"● ROOM 02 ONLINE",
-				14,
-				GREEN
-			)
-		)
-
 	var grid = GridContainer.new()
 	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 8)
 	content.add_child(grid)
 
-	for i in range(4):
+	for i in range(grow_capacity()):
 		var site = panel()
-		site.custom_minimum_size = Vector2(330, 220)
+		site.custom_minimum_size = Vector2(330, 210)
 		grid.add_child(site)
 
 		var sv = VBoxContainer.new()
@@ -328,36 +805,38 @@ func show_grow():
 			var p = plants[i]
 			var st = stage_info(p)
 
-			var stage = make_label(
-				st[0] + "  " + st[1],
-				28,
-				st[2]
-			)
-			stage.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			sv.add_child(stage)
-
 			sv.add_child(
 				make_label(
-					p.name + " • PHENO " + str(p.pheno),
-					17
+					str(st[0]) + " " + str(st[1]),
+					25,
+					st[2]
 				)
 			)
 
-			var growbar = ProgressBar.new()
-			growbar.max_value = p.days
-			growbar.value = p.age
-			growbar.custom_minimum_size = Vector2(0, 20)
-			sv.add_child(growbar)
+			sv.add_child(
+				make_label(
+					"%s • PHENO %s" % [
+						p["name"],
+						p["pheno"]
+					],
+					16
+				)
+			)
+
+			var bar = ProgressBar.new()
+			bar.max_value = p["days"]
+			bar.value = p["age"]
+			sv.add_child(bar)
 
 			sv.add_child(
 				make_label(
 					"DAY %d/%d • Q%d • WATER %d%%" % [
-						p.age,
-						p.days,
+						p["age"],
+						p["days"],
 						quality(p),
-						p.water
+						p["water"]
 					],
-					14,
+					13,
 					MUTED
 				)
 			)
@@ -365,55 +844,51 @@ func show_grow():
 			if p.get("problem", "") != "":
 				sv.add_child(
 					make_button(
-						"⚠ TREAT " + p.problem,
-						func(): treat_plant(i)
+						"TREAT " + str(p["problem"]),
+						func(idx = i): treat_plant(idx)
 					)
 				)
 
-			if p.water < 45:
+			if int(p["water"]) < 45:
 				sv.add_child(
 					make_button(
 						"WATER",
-						func(): water_plant(i)
+						func(idx = i): water_plant(idx)
 					)
 				)
 
-			if p.age >= 2 and p.age < p.days * 0.45 and not p.get("trained", false):
+			if int(p["age"]) >= 2 and not bool(p.get("trained", false)):
 				sv.add_child(
 					make_button(
 						"TRAIN",
-						func(): train_plant(i)
+						func(idx = i): train_plant(idx)
 					)
 				)
 
-			if p.age >= maxi(2, roundi(p.days * 0.35)):
+			if int(p["age"]) >= 2:
 				sv.add_child(
 					make_button(
 						"SAVE MOTHER",
-						func(): save_mother(i)
+						func(idx = i): save_mother(idx)
 					)
 				)
 
-			if p.age >= p.days:
+			if int(p["age"]) >= int(p["days"]):
 				sv.add_child(
 					make_button(
 						"HARVEST",
-						func(): harvest(i)
+						func(idx = i): harvest(idx)
 					)
 				)
 
 		else:
-			var empty = make_label("＋", 52, MUTED)
-			empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			sv.add_child(empty)
-
-			var et = make_label(
-				"EMPTY GROW SITE",
-				15,
-				MUTED
+			sv.add_child(
+				make_label(
+					"＋\nEMPTY GROW SITE",
+					22,
+					MUTED
+				)
 			)
-			et.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			sv.add_child(et)
 
 	content.add_child(
 		make_button(
@@ -428,37 +903,11 @@ func show_grow():
 	var cv = VBoxContainer.new()
 	controls.add_child(cv)
 
-	cv.add_child(
-		make_label(
-			"ENVIRONMENT CONTROL",
-			20,
-			RED
-		)
-	)
+	cv.add_child(make_label("ENVIRONMENT CONTROL", 20, RED))
 
-	light_slider = slider_row(
-		cv,
-		"LIGHT",
-		25,
-		100,
-		55
-	)
-
-	rh_slider = slider_row(
-		cv,
-		"HUMIDITY",
-		35,
-		80,
-		65
-	)
-
-	feed_slider = slider_row(
-		cv,
-		"FEED",
-		5,
-		24,
-		12
-	)
+	light_slider = slider_row(cv, "LIGHT", 25, 100, 55)
+	rh_slider = slider_row(cv, "HUMIDITY", 35, 80, 65)
+	feed_slider = slider_row(cv, "FEED", 5, 24, 12)
 
 	var seeds = panel()
 	content.add_child(seeds)
@@ -466,28 +915,22 @@ func show_grow():
 	var se = VBoxContainer.new()
 	seeds.add_child(se)
 
-	se.add_child(
-		make_label(
-			"GENETIC VAULT • SEEDS",
-			20,
-			GOLD
-		)
-	)
+	se.add_child(make_label("GENETIC VAULT • SEEDS", 20, GOLD))
 
 	for name in genetics:
-		var x = genetics[name]
-		var locked = level < x.unlock
+		var g = genetics[name]
+		var locked = level < int(g["unlock"])
 
-		var button_text = "%s • $%d" % [
+		var text = "%s • $%d" % [
 			name,
-			x.cost
+			g["cost"]
 		]
 
 		if locked:
-			button_text += " • LV " + str(x.unlock)
+			text += " • LV " + str(g["unlock"])
 
 		var b = make_button(
-			button_text,
+			text,
 			func(n = name): plant(n)
 		)
 
@@ -510,13 +953,7 @@ func slider_row(
 	val: float
 ) -> HSlider:
 
-	parent.add_child(
-		make_label(
-			label,
-			13,
-			MUTED
-		)
-	)
+	parent.add_child(make_label(label, 13, MUTED))
 
 	var s = HSlider.new()
 	s.min_value = minv
@@ -530,16 +967,25 @@ func slider_row(
 
 
 func quality(p: Dictionary) -> int:
-	var l = light_slider.value if is_instance_valid(light_slider) else 70.0
-	var h = rh_slider.value if is_instance_valid(rh_slider) else 57.0
-	var f = feed_slider.value / 10.0 if is_instance_valid(feed_slider) else 1.5
+	var l = 55.0
+	var h = 65.0
+	var f = 1.2
 
-	var flower = p.age > p.days * 0.45
+	if is_instance_valid(light_slider):
+		l = light_slider.value
 
+	if is_instance_valid(rh_slider):
+		h = rh_slider.value
+
+	if is_instance_valid(feed_slider):
+		f = feed_slider.value / 10.0
+
+	var flower = p["age"] > p["days"] * 0.45
 	var q = 100.0
+
 	q -= abs(l - (82 if flower else 55)) * 0.45
 	q -= abs(h - (50 if flower else 65)) * 0.7
-	q -= abs(f - (1.8 if flower else 1.2)) * 14
+	q -= abs(f - (1.8 if flower else 1.2)) * 14.0
 
 	q -= maxi(
 		0,
@@ -560,45 +1006,43 @@ func quality(p: Dictionary) -> int:
 	if owned_upgrades["Environment Controller"]:
 		q += 5
 
-	return clampi(
-		roundi(q),
-		35,
-		100
-	)
+	if "r2" in research_owned:
+		q += 3
+
+	if has_employee("Grow Tech"):
+		q += 2
+
+	return clampi(roundi(q), 35, 100)
 
 
 func plant(name: String):
+	if plants.size() >= grow_capacity():
+		return
+
 	var g = genetics[name]
 
-	if plants.size() >= 4:
+	if cash < int(g["cost"]):
 		return
 
-	if cash < g.cost:
-		return
+	cash -= int(g["cost"])
+	total_expenses += int(g["cost"])
 
-	cash -= g.cost
-
-	var phenos = [
-		"A",
-		"B",
-		"C",
-		"D"
-	]
+	var phenos = ["A", "B", "C", "D"]
 
 	plants.append({
 		"name": name,
 		"age": 0,
-		"days": g.days,
-		"base": g.base,
-		"traits": g.traits,
+		"days": g["days"],
+		"base": g["base"],
+		"traits": g["traits"],
 		"water": 100,
 		"pheno": phenos[rng.randi_range(0, 3)],
 		"vigor": rng.randi_range(88, 112),
 		"trained": false,
 		"problem": ""
 	})
-    process_tycoon_day()
-	save_game()
+
+	save_all()
 	refresh_stats()
 	show_grow()
 
@@ -607,16 +1051,12 @@ func advance_day():
 	day += 1
 
 	for p in plants:
-		p.age func advance_day():
-	day += 1
-
-	for p in plants:
-		p.age = min(
-			p.age + 1,
-			p.days
+		p["age"] = min(
+			int(p["age"]) + 1,
+			int(p["days"])
 		)
 
-		p.water = maxi(
+		p["water"] = maxi(
 			0,
 			int(p.get("water", 100)) - rng.randi_range(13, 23)
 		)
@@ -628,35 +1068,12 @@ func advance_day():
 				"Pests"
 			]
 
-			p.problem = probs[
+			p["problem"] = probs[
 				rng.randi_range(0, 2)
 			]
 
 	process_tycoon_day()
-	save_game()
-	refresh_stats()
-	show_grow()= min(
-			p.age + 1,
-			p.days
-		)
-
-		p.water = maxi(
-			0,
-			int(p.get("water", 100)) - rng.randi_range(13, 23)
-		)
-
-		if p.get("problem", "") == "" and rng.randf() < 0.08:
-			var probs = [
-				"Light Stress",
-				"Nutrient Imbalance",
-				"Pests"
-			]
-
-			p.problem = probs[
-				rng.randi_range(0, 2)
-			]
-    process_tycoon_day()
-	save_game()
+	save_all()
 	refresh_stats()
 	show_grow()
 
@@ -669,55 +1086,45 @@ func harvest(i: int):
 	var q = quality(p)
 
 	var grams = roundi(
-		(18.0 + p.base / 28.0) *
-		(float(p.vigor) / 100.0)
+		(18.0 + float(p["base"]) / 28.0) *
+		(float(p["vigor"]) / 100.0)
 	)
 
 	inventory.append({
-		"name": p.name,
+		"name": p["name"],
 		"q": q,
 		"grams": grams,
 		"days": 0,
-		"pheno": p.pheno
+		"pheno": p["pheno"]
 	})
 
-	xp += roundi(
-		30 + q * 0.55
-	)
-
-	reputation += maxi(
-		1,
-		roundi(q / 12.0)
-	)
-
+	xp += roundi(30 + q * 0.55)
+	reputation += maxi(1, roundi(q / 12.0))
 	mission_harvests += 1
 
-	unlock_achievement(
-		"First Harvest"
-	)
+	unlock_achievement("First Harvest")
 
 	if q >= 90:
-		var exists = keepers.any(
-			func(k):
-				return k.name == p.name and k.pheno == p.pheno
-		)
+		var exists = false
+
+		for k in keepers:
+			if k["name"] == p["name"] and k["pheno"] == p["pheno"]:
+				exists = true
 
 		if not exists:
 			keepers.append({
-				"name": p.name,
+				"name": p["name"],
 				"q": q,
-				"traits": p.traits,
-				"pheno": p.pheno
+				"traits": p["traits"],
+				"pheno": p["pheno"]
 			})
 
-			unlock_achievement(
-				"Keeper Hunter"
-			)
+			unlock_achievement("Keeper Hunter")
 
 	plants.remove_at(i)
 
 	level_up()
-	save_game()
+	save_all()
 	refresh_stats()
 	show_grow()
 
@@ -730,24 +1137,25 @@ func level_up():
 
 func water_plant(i: int):
 	if i >= 0 and i < plants.size():
-		plants[i].water = 100
-		save_game()
+		plants[i]["water"] = 100
+		save_all()
 		show_grow()
 
 
 func train_plant(i: int):
 	if i >= 0 and i < plants.size():
-		plants[i].trained = true
+		plants[i]["trained"] = true
 		reputation += 1
-		save_game()
+		save_all()
 		show_grow()
 
 
 func treat_plant(i: int):
 	if i >= 0 and i < plants.size() and cash >= 25:
 		cash -= 25
-		plants[i].problem = ""
-		save_game()
+		total_expenses += 25
+		plants[i]["problem"] = ""
+		save_all()
 		show_grow()
 
 
@@ -755,89 +1163,67 @@ func save_mother(i: int):
 	if i < 0 or i >= plants.size():
 		return
 
-	if mothers.size() >= 6:
+	if mothers.size() >= 12:
 		return
 
 	var p = plants[i]
+	var exists = false
 
-	var exists = mothers.any(
-		func(m):
-			return m.name == p.name and m.pheno == p.pheno
-	)
+	for m in mothers:
+		if m["name"] == p["name"] and m["pheno"] == p["pheno"]:
+			exists = true
 
 	if exists:
 		return
 
 	mothers.append({
-		"name": p.name,
-		"pheno": p.pheno,
+		"name": p["name"],
+		"pheno": p["pheno"],
 		"q": quality(p),
-		"traits": p.traits,
-		"vigor": p.vigor
+		"traits": p["traits"],
+		"vigor": p["vigor"]
 	})
 
-	save_game()
+	save_all()
 	show_grow()
+
+
+# =========================================================
+# GENETICS / BREEDING
+# =========================================================
 
 func show_genetics():
 	clear_content()
-
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
-		make_label(
-			"GENETICS LIBRARY",
-			27,
-			RED
-		)
-	)
+	content.add_child(make_label("GENETICS LIBRARY", 29, RED))
 
 	for name in genetics:
 		var g = genetics[name]
 
-		v.add_child(
+		content.add_child(
 			make_label(
 				"◆ %s • LV %d\n%s\nSeed $%d • Cycle %d days" % [
 					name,
-					g.unlock,
-					g.traits,
-					g.cost,
-					g.days
+					g["unlock"],
+					g["traits"],
+					g["cost"],
+					g["days"]
 				],
-				17,
-				WHITE
+				17
 			)
 		)
 
 
 func show_breeding():
 	clear_content()
+	content.add_child(make_label("PROJECT 0 • BREEDING LAB", 29, RED))
 
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
+	content.add_child(
 		make_label(
-			"PROJECT 0 • BREEDING LAB",
-			27,
-			RED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"MOTHERS %d/6 • CROSSES %d" % [
+			"MOTHERS %d • CROSSES %d" % [
 				mothers.size(),
 				crosses.size()
 			],
-			15,
+			16,
 			GOLD
 		)
 	)
@@ -845,35 +1231,35 @@ func show_breeding():
 	for i in range(mothers.size()):
 		var m = mothers[i]
 
-		v.add_child(
+		content.add_child(
 			make_button(
 				"CLONE • %s PHENO %s • Q%d" % [
-					m.name,
-					m.pheno,
-					m.q
+					m["name"],
+					m["pheno"],
+					m["q"]
 				],
 				func(idx = i): clone_mother(idx)
 			)
 		)
 
 	if mothers.size() >= 2:
-		v.add_child(
+		content.add_child(
 			make_button(
 				"CREATE CROSS • %s × %s" % [
-					mothers[0].name,
-					mothers[1].name
+					mothers[0]["name"],
+					mothers[1]["name"]
 				],
 				make_cross
 			)
 		)
 
 	for c in crosses:
-		v.add_child(
+		content.add_child(
 			make_label(
 				"DNA ◆ %s\n%s • Stability %d%%" % [
-					c.name,
-					c.traits,
-					c.stability
+					c["name"],
+					c["traits"],
+					c["stability"]
 				],
 				16,
 				MUTED
@@ -885,29 +1271,29 @@ func clone_mother(i: int):
 	if i < 0 or i >= mothers.size():
 		return
 
-	if plants.size() >= 4:
+	if plants.size() >= grow_capacity():
 		return
 
 	var m = mothers[i]
 	var base = 300
 
-	if genetics.has(m.name):
-		base = genetics[m.name].base
+	if genetics.has(m["name"]):
+		base = genetics[m["name"]]["base"]
 
 	plants.append({
-		"name": m.name + " Clone",
+		"name": str(m["name"]) + " Clone",
 		"age": 0,
 		"days": 9,
 		"base": base,
-		"traits": m.traits,
+		"traits": m["traits"],
 		"water": 100,
-		"pheno": m.pheno,
-		"vigor": m.vigor,
+		"pheno": m["pheno"],
+		"vigor": m["vigor"],
 		"trained": false,
 		"problem": ""
 	})
 
-	save_game()
+	save_all()
 	show_grow()
 
 
@@ -917,20 +1303,24 @@ func make_cross():
 
 	var a = mothers[0]
 	var b = mothers[1]
-	var cname = a.name + " × " + b.name
+	var cname = str(a["name"]) + " × " + str(b["name"])
 
-	var exists = crosses.any(
-		func(c):
-			return c.name == cname
-	)
+	for c in crosses:
+		if c["name"] == cname:
+			return
 
-	if exists:
-		return
+	var stability = rng.randi_range(55, 82)
+
+	if has_employee("Breeding Tech"):
+		stability += 5
+
+	if "r3" in research_owned:
+		stability += 5
 
 	crosses.append({
 		"name": cname,
-		"traits": a.traits + " • " + b.traits,
-		"stability": rng.randi_range(55, 82)
+		"traits": str(a["traits"]) + " • " + str(b["traits"]),
+		"stability": mini(100, stability)
 	})
 
 	reputation += 15
@@ -938,30 +1328,21 @@ func make_cross():
 
 	unlock_achievement("Breeder")
 	level_up()
-	save_game()
+	save_all()
 	refresh_stats()
 	show_breeding()
 
 
+# =========================================================
+# CURE / MARKET
+# =========================================================
+
 func show_cure():
 	clear_content()
-
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
-		make_label(
-			"DRY • CURE • FINISH",
-			27,
-			RED
-		)
-	)
+	content.add_child(make_label("DRY • CURE • FINISH", 29, RED))
 
 	if inventory.is_empty() and cured_inventory.is_empty():
-		v.add_child(
+		content.add_child(
 			make_label(
 				"No harvests in processing.",
 				17,
@@ -972,13 +1353,13 @@ func show_cure():
 	for i in range(inventory.size()):
 		var c = inventory[i]
 
-		v.add_child(
+		content.add_child(
 			make_button(
 				"%s • Q%d • %dg • CURE %d/3" % [
-					c.name,
-					c.q,
-					c.grams,
-					c.days
+					c["name"],
+					c["q"],
+					c["grams"],
+					c["days"]
 				],
 				func(idx = i): cure_day(idx)
 			)
@@ -987,11 +1368,11 @@ func show_cure():
 	for i in range(cured_inventory.size()):
 		var c = cured_inventory[i]
 
-		v.add_child(
+		content.add_child(
 			make_button(
 				"SELL • %s • Q%d • $%d" % [
-					c.name,
-					c.q,
+					c["name"],
+					c["q"],
 					sale_value(c)
 				],
 				func(idx = i): sell_cured(idx)
@@ -1003,60 +1384,51 @@ func cure_day(i: int):
 	if i < 0 or i >= inventory.size():
 		return
 
-	inventory[i].days += 1
+	inventory[i]["days"] += 1
 
-	if inventory[i].days >= 3:
-		cured_inventory.append(
-			inventory[i]
-		)
+	if inventory[i]["days"] >= 3:
+		cured_inventory.append(inventory[i])
 		inventory.remove_at(i)
 
-	save_game()
+	save_all()
 	show_cure()
 
 
 func sale_value(c: Dictionary) -> int:
-	return roundi(
-		c.grams *
-		(4.0 + c.q / 18.0)
+	var value = roundi(
+		int(c["grams"]) *
+		(4.0 + int(c["q"]) / 18.0)
 	)
+
+	if has_employee("Sales Rep"):
+		value = roundi(value * 1.10)
+
+	return value
 
 
 func sell_cured(i: int):
 	if i < 0 or i >= cured_inventory.size():
 		return
 
-	cash += sale_value(
-		cured_inventory[i]
-	)
+	var value = sale_value(cured_inventory[i])
+
+	cash += value
+	total_revenue += value
 
 	cured_inventory.remove_at(i)
 
-	save_game()
+	save_all()
 	refresh_stats()
 	show_cure()
 
 
 func show_market():
 	clear_content()
+	content.add_child(make_label("UNDERGROUND MARKET", 29, RED))
 
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
+	content.add_child(
 		make_label(
-			"UNDERGROUND MARKET",
-			27,
-			RED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"PREMIUM SHELF CONTRACT • Need 20g+ at Q80+",
+			"PREMIUM CONTRACT • Need 20g+ at Q80+",
 			16,
 			GOLD
 		)
@@ -1065,25 +1437,25 @@ func show_market():
 	var eligible = -1
 
 	for i in range(cured_inventory.size()):
-		if cured_inventory[i].q >= 80 and cured_inventory[i].grams >= 20:
+		if int(cured_inventory[i]["q"]) >= 80 and int(cured_inventory[i]["grams"]) >= 20:
 			eligible = i
 			break
 
 	if eligible >= 0:
 		var c = cured_inventory[eligible]
 
-		v.add_child(
+		content.add_child(
 			make_button(
 				"FULFILL • %s • Q%d • %dg" % [
-					c.name,
-					c.q,
-					c.grams
+					c["name"],
+					c["q"],
+					c["grams"]
 				],
 				func(idx = eligible): fulfill_contract(idx)
 			)
 		)
 	else:
-		v.add_child(
+		content.add_child(
 			make_label(
 				"No qualifying cured inventory.",
 				16,
@@ -1091,7 +1463,7 @@ func show_market():
 			)
 		)
 
-	v.add_child(
+	content.add_child(
 		make_label(
 			"CONTRACTS COMPLETED • %d" % contracts_completed,
 			17
@@ -1104,43 +1476,33 @@ func fulfill_contract(i: int):
 		return
 
 	var c = cured_inventory[i]
+	var value = roundi(sale_value(c) * 1.35)
 
-	cash += roundi(
-		sale_value(c) * 1.35
-	)
+	if "r4" in research_owned:
+		value = roundi(value * 1.15)
 
+	cash += value
+	total_revenue += value
 	reputation += 12
 	xp += 60
 	contracts_completed += 1
 
 	cured_inventory.remove_at(i)
 
-	unlock_achievement(
-		"Contract Killer"
-	)
-
+	unlock_achievement("Contract Killer")
 	level_up()
-	save_game()
+	save_all()
 	refresh_stats()
 	show_market()
 
 
+# =========================================================
+# EQUIPMENT
+# =========================================================
+
 func show_shop():
 	clear_content()
-
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
-		make_label(
-			"EMPIRE EQUIPMENT",
-			27,
-			RED
-		)
-	)
+	content.add_child(make_label("EMPIRE EQUIPMENT", 29, RED))
 
 	var shop_items = [
 		["LED Upgrade", 750],
@@ -1148,9 +1510,8 @@ func show_shop():
 	]
 
 	for item in shop_items:
-		var owned = owned_upgrades[item[0]]
-
-		var text = item[0] + " • "
+		var owned = bool(owned_upgrades[item[0]])
+		var text = str(item[0]) + " • "
 
 		if owned:
 			text += "OWNED"
@@ -1159,11 +1520,14 @@ func show_shop():
 
 		var b = make_button(
 			text,
-			func(n = item[0], c = item[1]): buy_upgrade(n, c)
+			func(n = item[0], c = item[1]):
+				buy_upgrade(n, c)
 		)
 
 		b.disabled = owned
-		v.add_child(b)
+		content.add_child(b)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
 
 
 func buy_upgrade(n: String, c: int):
@@ -1171,31 +1535,30 @@ func buy_upgrade(n: String, c: int):
 		return
 
 	cash -= c
+	total_expenses += c
 	owned_upgrades[n] = true
 
-	save_game()
+	save_all()
 	refresh_stats()
 	show_shop()
 
 
+# =========================================================
+# PROJECT 0 VAULT
+# =========================================================
+
 func show_vault():
 	clear_content()
 
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
+	content.add_child(
 		make_label(
 			"PROJECT 0 • KEEPER VAULT",
-			27,
+			29,
 			RED
 		)
 	)
 
-	v.add_child(
+	content.add_child(
 		make_label(
 			"PRESERVE THE GENETICS",
 			16,
@@ -1204,7 +1567,7 @@ func show_vault():
 	)
 
 	if keepers.is_empty():
-		v.add_child(
+		content.add_child(
 			make_label(
 				"Vault empty. Hunt Q90+ phenotypes.",
 				17,
@@ -1213,262 +1576,49 @@ func show_vault():
 		)
 
 	for k in keepers:
-		v.add_child(
+		content.add_child(
 			make_label(
 				"PROJECT 0 VERIFIED\n%s • PHENO %s • Q%d\n%s" % [
-					k.name,
+					k["name"],
 					k.get("pheno", "A"),
-					k.q,
-					k.traits
+					k["q"],
+					k["traits"]
 				],
-				17,
-				WHITE
+				17
 			)
 		)
 
 
+# =========================================================
+# CAMPAIGN
+# =========================================================
+
 func mission_defs() -> Array:
 	return [
-		{
-			"id": "m01",
-			"chapter": "CHAPTER 1 • FIRST ROOTS",
-			"title": "Break Ground",
-			"desc": "Plant your first genetic.",
-			"type": "plants",
-			"goal": 1,
-			"cash": 150,
-			"xp": 20
-		},
-		{
-			"id": "m02",
-			"chapter": "CHAPTER 1 • FIRST ROOTS",
-			"title": "Keep Them Alive",
-			"desc": "Reach Day 3.",
-			"type": "day",
-			"goal": 3,
-			"cash": 200,
-			"xp": 25
-		},
-		{
-			"id": "m03",
-			"chapter": "CHAPTER 1 • FIRST ROOTS",
-			"title": "First Harvest",
-			"desc": "Complete your first harvest.",
-			"type": "harvests",
-			"goal": 1,
-			"cash": 300,
-			"xp": 40
-		},
-		{
-			"id": "m04",
-			"chapter": "CHAPTER 1 • FIRST ROOTS",
-			"title": "Three Deep",
-			"desc": "Complete 3 harvests.",
-			"type": "harvests",
-			"goal": 3,
-			"cash": 1000,
-			"xp": 75
-		},
-		{
-			"id": "m05",
-			"chapter": "CHAPTER 2 • PHENO HUNT",
-			"title": "Level Up",
-			"desc": "Reach grower level 2.",
-			"type": "level",
-			"goal": 2,
-			"cash": 350,
-			"xp": 40
-		},
-		{
-			"id": "m06",
-			"chapter": "CHAPTER 2 • PHENO HUNT",
-			"title": "Earn Respect",
-			"desc": "Reach 20 reputation.",
-			"type": "rep",
-			"goal": 20,
-			"cash": 450,
-			"xp": 50
-		},
-		{
-			"id": "m07",
-			"chapter": "CHAPTER 2 • PHENO HUNT",
-			"title": "Keeper Hunter",
-			"desc": "Preserve your first Q90+ keeper.",
-			"type": "keepers",
-			"goal": 1,
-			"cash": 700,
-			"xp": 80
-		},
-		{
-			"id": "m08",
-			"chapter": "CHAPTER 2 • PHENO HUNT",
-			"title": "Project 0 Pair",
-			"desc": "Preserve 2 keepers.",
-			"type": "keepers",
-			"goal": 2,
-			"cash": 900,
-			"xp": 100
-		},
-		{
-			"id": "m09",
-			"chapter": "CHAPTER 3 • MOTHER ROOM",
-			"title": "Save The Cut",
-			"desc": "Establish your first mother.",
-			"type": "mothers",
-			"goal": 1,
-			"cash": 500,
-			"xp": 60
-		},
-		{
-			"id": "m10",
-			"chapter": "CHAPTER 3 • MOTHER ROOM",
-			"title": "Mother Library",
-			"desc": "Establish 3 mothers.",
-			"type": "mothers",
-			"goal": 3,
-			"cash": 900,
-			"xp": 100
-		},
-		{
-			"id": "m11",
-			"chapter": "CHAPTER 3 • MOTHER ROOM",
-			"title": "Genetic Depth",
-			"desc": "Reach grower level 3.",
-			"type": "level",
-			"goal": 3,
-			"cash": 600,
-			"xp": 70
-		},
-		{
-			"id": "m12",
-			"chapter": "CHAPTER 3 • MOTHER ROOM",
-			"title": "Vault Builder",
-			"desc": "Preserve 3 keepers.",
-			"type": "keepers",
-			"goal": 3,
-			"cash": 1200,
-			"xp": 125
-		},
-		{
-			"id": "m13",
-			"chapter": "CHAPTER 4 • BREEDING LAB",
-			"title": "Make The Cross",
-			"desc": "Create your first cross.",
-			"type": "crosses",
-			"goal": 1,
-			"cash": 1000,
-			"xp": 125
-		},
-		{
-			"id": "m14",
-			"chapter": "CHAPTER 4 • BREEDING LAB",
-			"title": "Breeder's Bench",
-			"desc": "Create 2 crosses.",
-			"type": "crosses",
-			"goal": 2,
-			"cash": 1400,
-			"xp": 150
-		},
-		{
-			"id": "m15",
-			"chapter": "CHAPTER 4 • BREEDING LAB",
-			"title": "Deep Catalog",
-			"desc": "Reach grower level 4.",
-			"type": "level",
-			"goal": 4,
-			"cash": 900,
-			"xp": 100
-		},
-		{
-			"id": "m16",
-			"chapter": "CHAPTER 4 • BREEDING LAB",
-			"title": "Preservation Crew",
-			"desc": "Reach 60 reputation.",
-			"type": "rep",
-			"goal": 60,
-			"cash": 1200,
-			"xp": 125
-		},
-		{
-			"id": "m17",
-			"chapter": "CHAPTER 5 • MARKET PRESSURE",
-			"title": "First Contract",
-			"desc": "Complete a dispensary contract.",
-			"type": "contracts",
-			"goal": 1,
-			"cash": 800,
-			"xp": 90
-		},
-		{
-			"id": "m18",
-			"chapter": "CHAPTER 5 • MARKET PRESSURE",
-			"title": "Reliable Supplier",
-			"desc": "Complete 3 contracts.",
-			"type": "contracts",
-			"goal": 3,
-			"cash": 1600,
-			"xp": 175
-		},
-		{
-			"id": "m19",
-			"chapter": "CHAPTER 5 • MARKET PRESSURE",
-			"title": "Stack The Safe",
-			"desc": "Hold $5,000 cash.",
-			"type": "cash",
-			"goal": 5000,
-			"cash": 1000,
-			"xp": 100
-		},
-		{
-			"id": "m20",
-			"chapter": "CHAPTER 5 • MARKET PRESSURE",
-			"title": "Known Name",
-			"desc": "Reach 100 reputation.",
-			"type": "rep",
-			"goal": 100,
-			"cash": 2000,
-			"xp": 200
-		},
-		{
-			"id": "m21",
-			"chapter": "CHAPTER 6 • GROW EMPIRE",
-			"title": "Room Two",
-			"desc": "Expand to facility level 2.",
-			"type": "facility",
-			"goal": 2,
-			"cash": 1200,
-			"xp": 120
-		},
-		{
-			"id": "m22",
-			"chapter": "CHAPTER 6 • GROW EMPIRE",
-			"title": "Ten Harvests",
-			"desc": "Complete 10 harvests.",
-			"type": "harvests",
-			"goal": 10,
-			"cash": 2500,
-			"xp": 250
-		},
-		{
-			"id": "m23",
-			"chapter": "CHAPTER 6 • GROW EMPIRE",
-			"title": "Project 0 Vault",
-			"desc": "Preserve 5 elite keepers.",
-			"type": "keepers",
-			"goal": 5,
-			"cash": 3000,
-			"xp": 300
-		},
-		{
-			"id": "m24",
-			"chapter": "CHAPTER 6 • GROW EMPIRE",
-			"title": "Own The Show",
-			"desc": "Reach level 6.",
-			"type": "level",
-			"goal": 6,
-			"cash": 5000,
-			"xp": 500
-		}
+		{"id":"m01","title":"Break Ground","type":"plants","goal":1,"cash":150,"xp":20},
+		{"id":"m02","title":"Keep Them Alive","type":"day","goal":3,"cash":200,"xp":25},
+		{"id":"m03","title":"First Harvest","type":"harvests","goal":1,"cash":300,"xp":40},
+		{"id":"m04","title":"Three Deep","type":"harvests","goal":3,"cash":1000,"xp":75},
+		{"id":"m05","title":"Level Up","type":"level","goal":2,"cash":350,"xp":40},
+		{"id":"m06","title":"Earn Respect","type":"rep","goal":20,"cash":450,"xp":50},
+		{"id":"m07","title":"Keeper Hunter","type":"keepers","goal":1,"cash":700,"xp":80},
+		{"id":"m08","title":"Project 0 Pair","type":"keepers","goal":2,"cash":900,"xp":100},
+		{"id":"m09","title":"Save The Cut","type":"mothers","goal":1,"cash":500,"xp":60},
+		{"id":"m10","title":"Mother Library","type":"mothers","goal":3,"cash":900,"xp":100},
+		{"id":"m11","title":"Genetic Depth","type":"level","goal":3,"cash":600,"xp":70},
+		{"id":"m12","title":"Vault Builder","type":"keepers","goal":3,"cash":1200,"xp":125},
+		{"id":"m13","title":"Make The Cross","type":"crosses","goal":1,"cash":1000,"xp":125},
+		{"id":"m14","title":"Breeder's Bench","type":"crosses","goal":2,"cash":1400,"xp":150},
+		{"id":"m15","title":"Deep Catalog","type":"level","goal":4,"cash":900,"xp":100},
+		{"id":"m16","title":"Preservation Crew","type":"rep","goal":60,"cash":1200,"xp":125},
+		{"id":"m17","title":"First Contract","type":"contracts","goal":1,"cash":800,"xp":90},
+		{"id":"m18","title":"Reliable Supplier","type":"contracts","goal":3,"cash":1600,"xp":175},
+		{"id":"m19","title":"Stack The Safe","type":"cash","goal":5000,"cash":1000,"xp":100},
+		{"id":"m20","title":"Known Name","type":"rep","goal":100,"cash":2000,"xp":200},
+		{"id":"m21","title":"Room Two","type":"facility","goal":2,"cash":1200,"xp":120},
+		{"id":"m22","title":"Ten Harvests","type":"harvests","goal":10,"cash":2500,"xp":250},
+		{"id":"m23","title":"Project 0 Vault","type":"keepers","goal":5,"cash":3000,"xp":300},
+		{"id":"m24","title":"Own The Show","type":"level","goal":6,"cash":5000,"xp":500}
 	]
 
 
@@ -1503,13 +1653,7 @@ func mission_value(t: String) -> int:
 func show_missions():
 	clear_content()
 
-	var top = panel()
-	content.add_child(top)
-
-	var tv = VBoxContainer.new()
-	top.add_child(tv)
-
-	tv.add_child(
+	content.add_child(
 		make_label(
 			"PROJECT 0 • CAMPAIGN",
 			29,
@@ -1517,91 +1661,59 @@ func show_missions():
 		)
 	)
 
-	tv.add_child(
+	content.add_child(
 		make_label(
-			"PRESERVE • BUILD • BREED • OWN THE SHOW",
-			14,
+			"%d / %d COMPLETE" % [
+				mission_claimed.size(),
+				mission_defs().size()
+			],
+			16,
 			GOLD
 		)
 	)
 
-	tv.add_child(
-		make_label(
-			"%d / %d MISSIONS COMPLETE" % [
-				mission_claimed.size(),
-				mission_defs().size()
-			],
-			17
-		)
-	)
-
-	var current = ""
-
 	for m in mission_defs():
-		if m.chapter != current:
-			current = m.chapter
-
-			content.add_child(
-				make_label(
-					current,
-					20,
-					RED
-				)
-			)
-
 		var card = panel()
 		content.add_child(card)
 
 		var v = VBoxContainer.new()
 		card.add_child(v)
 
-		var done = m.id in mission_claimed
-		var value = mission_value(m.type)
-		var progress = mini(
-			value,
-			int(m.goal)
-		)
+		var done = m["id"] in mission_claimed
+		var value = mission_value(m["type"])
+		var progress = mini(value, int(m["goal"]))
 
 		v.add_child(
 			make_label(
-				("✓ " if done else "◆ ") + m.title,
-				19,
+				("✓ " if done else "◆ ") + str(m["title"]),
+				18,
 				GREEN if done else WHITE
 			)
 		)
 
-		v.add_child(
-			make_label(
-				m.desc,
-				14,
-				MUTED
-			)
-		)
-
 		var bar = ProgressBar.new()
-		bar.max_value = m.goal
+		bar.max_value = m["goal"]
 		bar.value = progress
-		bar.custom_minimum_size = Vector2(0, 20)
 		v.add_child(bar)
 
 		v.add_child(
 			make_label(
-				"%d/%d • REWARD $%d + %d XP" % [
+				"%d/%d • $%d + %d XP" % [
 					progress,
-					m.goal,
-					m.cash,
-					m.xp
+					m["goal"],
+					m["cash"],
+					m["xp"]
 				],
 				14,
 				GOLD
 			)
 		)
 
-		if not done and value >= m.goal:
+		if not done and value >= int(m["goal"]):
 			v.add_child(
 				make_button(
 					"CLAIM MISSION",
-					func(id = m.id):
+					func(id = m["id"]):
 						claim_campaign_mission(id)
 				)
 			)
@@ -1612,27 +1724,421 @@ func claim_campaign_mission(id: String):
 		return
 
 	for m in mission_defs():
-		if m.id == id and mission_value(m.type) >= m.goal:
+		if m["id"] == id and mission_value(m["type"]) >= int(m["goal"]):
 			mission_claimed.append(id)
 
-			cash += m.cash
-			xp += m.xp
+			cash += int(m["cash"])
+			total_revenue += int(m["cash"])
+			xp += int(m["xp"])
 			reputation += 2
 
 			if id == "m04" and facility_level < 2:
 				facility_level = 2
 				room_two_unlocked = true
-
-				unlock_achievement(
-					"Empire Builder"
-				)
+				unlock_achievement("Empire Builder")
 
 			level_up()
-			save_game()
+			save_all()
 			refresh_stats()
 			show_missions()
 			return
 
+
+# =========================================================
+# SIDE MISSIONS
+# =========================================================
+
+func side_defs() -> Array:
+	var defs: Array = []
+	var counter := 1
+
+	var groups = [
+		["harvests", "Harvest Run", 2, 2, 250],
+		["rep", "Build The Name", 15, 15, 300],
+		["keepers", "Keeper Hunt", 1, 1, 450],
+		["mothers", "Mother Room", 1, 1, 400],
+		["crosses", "Breeding Work", 1, 1, 650],
+		["contracts", "Market Work", 1, 1, 600],
+		["cash", "Stack Cash", 1500, 1500, 500],
+		["level", "Grower Progress", 2, 1, 550]
+	]
+
+	for group in groups:
+		for tier in range(1, 5):
+			defs.append({
+				"id": "s%02d" % counter,
+				"title": str(group[1]) + " " + str(tier),
+				"type": group[0],
+				"goal": int(group[2]) + int(group[3]) * (tier - 1),
+				"cash": int(group[4]) * tier,
+				"xp": 20 * tier
+			})
+
+			counter += 1
+
+	return defs
+
+
+func show_side_missions():
+	clear_content()
+	content.add_child(make_label("SIDE MISSIONS", 29, RED))
+
+	for m in side_defs():
+		var done = m["id"] in side_claimed
+		var value = mission_value(m["type"])
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				("✓ " if done else "◆ ") + str(m["title"]),
+				17,
+				GREEN if done else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"%d/%d • $%d + %d XP" % [
+					mini(value, int(m["goal"])),
+					m["goal"],
+					m["cash"],
+					m["xp"]
+				],
+				14,
+				GOLD
+			)
+		)
+
+		if not done and value >= int(m["goal"]):
+			v.add_child(
+				make_button(
+					"CLAIM",
+					func(id = m["id"]):
+						claim_side(id)
+				)
+			)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func claim_side(id: String):
+	if id in side_claimed:
+		return
+
+	for m in side_defs():
+		if m["id"] == id and mission_value(m["type"]) >= int(m["goal"]):
+			side_claimed.append(id)
+			cash += int(m["cash"])
+			total_revenue += int(m["cash"])
+			xp += int(m["xp"])
+			level_up()
+			save_all()
+			show_side_missions()
+			return
+
+
+# =========================================================
+# WEEKLY CHALLENGES
+# =========================================================
+
+func show_weekly():
+	clear_content()
+	content.add_child(make_label("PROJECT 0 • WEEKLY", 29, RED))
+
+	var harvest_progress = mission_harvests - weekly_harvest_start
+	var rep_progress = reputation - weekly_rep_start
+	var day_progress = day - weekly_start_day
+
+	var challenges = [
+		{
+			"id":"w1",
+			"title":"Clock In",
+			"value":day_progress,
+			"goal":2,
+			"cash":300
+		},
+		{
+			"id":"w2",
+			"title":"Production Push",
+			"value":harvest_progress,
+			"goal":2,
+			"cash":700
+		},
+		{
+			"id":"w3",
+			"title":"Build The Brand",
+			"value":rep_progress,
+			"goal":15,
+			"cash":800
+		}
+	]
+
+	for c in challenges:
+		var done = c["id"] in weekly_claimed
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				("✓ " if done else "◆ ") + str(c["title"]),
+				18,
+				GREEN if done else WHITE
+			)
+		)
+
+		v.add_child(
+			make_label(
+				"%d/%d • REWARD $%d" % [
+					mini(int(c["value"]), int(c["goal"])),
+					c["goal"],
+					c["cash"]
+				],
+				14,
+				GOLD
+			)
+		)
+
+		if not done and int(c["value"]) >= int(c["goal"]):
+			v.add_child(
+				make_button(
+					"CLAIM WEEKLY",
+					func(id = c["id"], reward = c["cash"]):
+						claim_weekly(id, reward)
+				)
+			)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func claim_weekly(id: String, reward: int):
+	if id in weekly_claimed:
+		return
+
+	weekly_claimed.append(id)
+	cash += reward
+	total_revenue += reward
+	xp += 50
+	level_up()
+
+	save_all()
+	refresh_stats()
+	show_weekly()
+
+
+# =========================================================
+# RESEARCH
+# =========================================================
+
+func show_research():
+	clear_content()
+	content.add_child(make_label("PROJECT 0 • RESEARCH", 29, RED))
+
+	for r in RESEARCH:
+		var owned = r["id"] in research_owned
+
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				"%s • %s" % [
+					r["name"],
+					"COMPLETE" if owned else "$" + str(r["cost"])
+				],
+				18,
+				GREEN if owned else WHITE
+			)
+		)
+
+		if not owned:
+			v.add_child(
+				make_button(
+					"RESEARCH",
+					func(id = r["id"]):
+						buy_research(id)
+				)
+			)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func buy_research(id: String):
+	if id in research_owned:
+		return
+
+	for r in RESEARCH:
+		if r["id"] == id:
+			if cash < int(r["cost"]):
+				return
+
+			cash -= int(r["cost"])
+			total_expenses += int(r["cost"])
+			research_owned.append(id)
+
+			save_all()
+			refresh_stats()
+			show_research()
+			return
+
+
+# =========================================================
+# COMPETITIONS
+# =========================================================
+
+func show_competitions():
+	clear_content()
+	content.add_child(make_label("GENETICS COMPETITIONS", 29, RED))
+
+	var events = [
+		{
+			"name":"Local Grow-Off",
+			"fee":250,
+			"rep":15,
+			"reward":1000,
+			"keepers":0
+		},
+		{
+			"name":"Regional Genetics Cup",
+			"fee":1000,
+			"rep":40,
+			"reward":5000,
+			"keepers":1
+		},
+		{
+			"name":"Project 0 Invitational",
+			"fee":5000,
+			"rep":100,
+			"reward":20000,
+			"keepers":3
+		}
+	]
+
+	for e in events:
+		var card = panel()
+		content.add_child(card)
+
+		var v = VBoxContainer.new()
+		card.add_child(v)
+
+		v.add_child(
+			make_label(
+				"%s\nEntry $%d • Prize $%d\nNeed %d keeper(s)" % [
+					e["name"],
+					e["fee"],
+					e["reward"],
+					e["keepers"]
+				],
+				17
+			)
+		)
+
+		v.add_child(
+			make_button(
+				"ENTER COMPETITION",
+				func(ev = e):
+					enter_competition(ev)
+			)
+		)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func enter_competition(e: Dictionary):
+	if cash < int(e["fee"]):
+		return
+
+	if keepers.size() < int(e["keepers"]):
+		return
+
+	cash -= int(e["fee"])
+	total_expenses += int(e["fee"])
+
+	var score = reputation
+	score += level * 10
+	score += keepers.size() * 12
+	score += crosses.size() * 8
+	score += rng.randi_range(0, 50)
+
+	if has_employee("Genetics Researcher"):
+		score += 15
+
+	if "r5" in research_owned:
+		score += 20
+
+	var target = 40 + int(e["keepers"]) * 35
+
+	if score >= target:
+		cash += int(e["reward"])
+		total_revenue += int(e["reward"])
+		reputation += int(e["rep"])
+		cups_won += 1
+
+		event_log.append(
+			"Won the %s." % e["name"]
+		)
+
+		unlock_achievement("Cup Winner")
+	else:
+		event_log.append(
+			"Placed outside the money at %s." % e["name"]
+		)
+
+	save_all()
+	refresh_stats()
+	show_competitions()
+
+
+# =========================================================
+# FINANCES
+# =========================================================
+
+func show_finances():
+	clear_content()
+	content.add_child(make_label("EMPIRE FINANCES", 29, RED))
+
+	var profit = total_revenue - total_expenses
+
+	content.add_child(
+		make_label(
+			"Cash: $%d\nRevenue: $%d\nExpenses: $%d\nNet: $%d\nPayroll: $%d\nFacility Overhead: $%d\nEmpire Value: $%d" % [
+				cash,
+				total_revenue,
+				total_expenses,
+				profit,
+				employee_payroll(),
+				facility_data()["overhead"],
+				business_value()
+			],
+			18
+		)
+	)
+
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+func has_employee(role: String) -> bool:
+	for e in employees:
+		if e["role"] == role:
+			return true
+
+	return false
+
+
+# =========================================================
+# ACHIEVEMENTS
+# =========================================================
 
 func unlock_achievement(id: String):
 	if id not in achievements:
@@ -1641,64 +2147,41 @@ func unlock_achievement(id: String):
 
 func show_achievements():
 	clear_content()
-
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
-		make_label(
-			"SHOCKER OWNZ • ACHIEVEMENTS",
-			27,
-			RED
-		)
-	)
+	content.add_child(make_label("SHOCKER OWNZ • ACHIEVEMENTS", 29, RED))
 
 	var defs = [
-		[
-			"First Harvest",
-			"Complete your first harvest."
-		],
-		[
-			"Keeper Hunter",
-			"Preserve a Q90+ phenotype."
-		],
-		[
-			"Breeder",
-			"Create your first cross."
-		],
-		[
-			"Contract Killer",
-			"Complete a market contract."
-		],
-		[
-			"Empire Builder",
-			"Unlock Room 02."
-		]
+		["First Harvest", "Complete your first harvest."],
+		["Keeper Hunter", "Preserve a Q90+ phenotype."],
+		["Breeder", "Create your first cross."],
+		["Contract Killer", "Complete a market contract."],
+		["Empire Builder", "Expand the operation."],
+		["Cup Winner", "Win a genetics competition."]
 	]
 
 	for a in defs:
 		var done = a[0] in achievements
 
-		v.add_child(
+		content.add_child(
 			make_label(
 				("✓ " if done else "○ ") +
-				a[0] +
+				str(a[0]) +
 				"\n" +
-				a[1],
+				str(a[1]),
 				17,
 				GREEN if done else MUTED
 			)
 		)
 
-	v.add_child(
-		make_button(
-			"BACK TO GROW",
-			show_grow
-		)
-	)
+	content.add_child(make_button("BACK TO EMPIRE", show_empire))
+
+
+# =========================================================
+# SAVE SYSTEM
+# =========================================================
+
+func save_all():
+	save_game()
+	tycoon_save()
 
 
 func save_game():
@@ -1729,9 +2212,7 @@ func save_game():
 	)
 
 	if f:
-		f.store_string(
-			JSON.stringify(data)
-		)
+		f.store_string(JSON.stringify(data))
 
 
 func load_game():
@@ -1746,99 +2227,40 @@ func load_game():
 	if not f:
 		return
 
-	var d = JSON.parse_string(
-		f.get_as_text()
-	)
+	var d = JSON.parse_string(f.get_as_text())
 
 	if typeof(d) != TYPE_DICTIONARY:
 		return
 
-	cash = int(
-		d.get("cash", 500)
-	)
+	cash = int(d.get("cash", 500))
+	xp = int(d.get("xp", 0))
+	level = int(d.get("level", 1))
+	reputation = int(d.get("reputation", 0))
+	day = int(d.get("day", 1))
 
-	xp = int(
-		d.get("xp", 0)
-	)
-
-	level = int(
-		d.get("level", 1)
-	)
-
-	reputation = int(
-		d.get("reputation", 0)
-	)
-
-	day = int(
-		d.get("day", 1)
-	)
-
-	plants = d.get(
-		"plants",
-		[]
-	)
-
-	keepers = d.get(
-		"keepers",
-		[]
-	)
-
-	mothers = d.get(
-		"mothers",
-		[]
-	)
-
-	crosses = d.get(
-		"crosses",
-		[]
-	)
-
-	inventory = d.get(
-		"inventory",
-		[]
-	)
-
-	cured_inventory = d.get(
-		"cured_inventory",
-		[]
-	)
-
-	achievements = d.get(
-		"achievements",
-		[]
-	)
-
-	mission_claimed = d.get(
-		"mission_claimed",
-		[]
-	)
+	plants = d.get("plants", [])
+	keepers = d.get("keepers", [])
+	mothers = d.get("mothers", [])
+	crosses = d.get("crosses", [])
+	inventory = d.get("inventory", [])
+	cured_inventory = d.get("cured_inventory", [])
+	achievements = d.get("achievements", [])
+	mission_claimed = d.get("mission_claimed", [])
 
 	mission_harvests = int(
-		d.get(
-			"mission_harvests",
-			0
-		)
+		d.get("mission_harvests", 0)
 	)
 
 	contracts_completed = int(
-		d.get(
-			"contracts_completed",
-			0
-		)
+		d.get("contracts_completed", 0)
 	)
 
 	facility_level = int(
-		d.get(
-			"facility_level",
-			1
-		)
+		d.get("facility_level", 1)
 	)
 
 	room_two_unlocked = bool(
-		d.get(
-			"room_two_unlocked",
-			false
-		)
+		d.get("room_two_unlocked", false)
 	)
 
 	owned_upgrades = d.get(
@@ -1848,1682 +2270,80 @@ func load_game():
 
 	for p in plants:
 		if not p.has("water"):
-			p.water = 100
+			p["water"] = 100
 
 		if not p.has("pheno"):
-			p.pheno = "A"
+			p["pheno"] = "A"
 
 		if not p.has("vigor"):
-			p.vigor = 100
+			p["vigor"] = 100
 
 		if not p.has("trained"):
-			p.trained = false
+			p["trained"] = false
 
 		if not p.has("problem"):
-			p.problem = ""
+			p["problem"] = ""
 
 
-# ============================================================
-# SHOCKER OWNZ: GROW EMPIRE
-# ALPHA 0.11 — TYCOON EXPANSION
-# ============================================================
-
-var tycoon_started := false
-var total_revenue := 0
-var total_expenses := 0
-var employees: Array = []
-var side_claimed: Array = []
-var daily_claimed: Array = []
-var research_owned: Array = []
-var cups_won := 0
-var event_log: Array = []
-var last_bill_day := 0
-var last_daily_reset := 0
-
-
-const FACILITIES = [
-	{
-		"name": "Closet Start",
-		"cost": 0,
-		"slots": 4,
-		"overhead": 35,
-		"unlock": 1
-	},
-	{
-		"name": "Pro Tent",
-		"cost": 2500,
-		"slots": 6,
-		"overhead": 75,
-		"unlock": 2
-	},
-	{
-		"name": "Basement Lab",
-		"cost": 7500,
-		"slots": 8,
-		"overhead": 150,
-		"unlock": 3
-	},
-	{
-		"name": "Garage Facility",
-		"cost": 18000,
-		"slots": 10,
-		"overhead": 300,
-		"unlock": 4
-	},
-	{
-		"name": "Warehouse",
-		"cost": 50000,
-		"slots": 12,
-		"overhead": 650,
-		"unlock": 5
-	},
-	{
-		"name": "Project 0 Compound",
-		"cost": 125000,
-		"slots": 16,
-		"overhead": 1200,
-		"unlock": 6
-	}
-]
-
-
-const STAFF = [
-	{
-		"role": "Grow Tech",
-		"hire": 600,
-		"pay": 55,
-		"bonus": "Plant care + quality"
-	},
-	{
-		"role": "Breeding Tech",
-		"hire": 1200,
-		"pay": 90,
-		"bonus": "Genetics + breeding"
-	},
-	{
-		"role": "Sales Rep",
-		"hire": 1600,
-		"pay": 110,
-		"bonus": "Contracts + revenue"
-	},
-	{
-		"role": "Facility Manager",
-		"hire": 3000,
-		"pay": 180,
-		"bonus": "Lower overhead"
-	},
-	{
-		"role": "Genetics Researcher",
-		"hire": 5000,
-		"pay": 260,
-		"bonus": "Research + keeper hunting"
-	}
-]
-
-
-const RESEARCH = [
-	{
-		"id": "r1",
-		"name": "Efficient Lighting",
-		"cost": 1000,
-		"desc": "Reduce operating pressure and improve quality."
-	},
-	{
-		"id": "r2",
-		"name": "Climate Automation",
-		"cost": 2500,
-		"desc": "Improve consistency across the facility."
-	},
-	{
-		"id": "r3",
-		"name": "Genetic Analytics",
-		"cost": 5000,
-		"desc": "Boost Project 0 keeper hunting."
-	},
-	{
-		"id": "r4",
-		"name": "Contract Network",
-		"cost": 7500,
-		"desc": "Increase business reputation."
-	},
-	{
-		"id": "r5",
-		"name": "Project 0 Lab",
-		"cost": 15000,
-		"desc": "Unlock elite research status."
-	}
-]
-
-
-func tycoon_boot():
-	if tycoon_started:
-		return
-
-	tycoon_started = true
-
-	if last_daily_reset == 0:
-		last_daily_reset = day
-
-	if last_bill_day == 0:
-		last_bill_day = day
-
-	tycoon_load_extension()
-
-
-func facility_data() -> Dictionary:
-	var idx = clampi(
-		facility_level - 1,
-		0,
-		FACILITIES.size() - 1
-	)
-
-	return FACILITIES[idx]
-
-
-func employee_payroll() -> int:
-	var total := 0
-
-	for e in employees:
-		total += int(
-			e.get("pay", 0)
-		)
-
-	return total
-
-
-func business_value() -> int:
-	var genetic_value = (
-		keepers.size() * 900 +
-		mothers.size() * 500 +
-		crosses.size() * 1400
-	)
-
-	var asset_value = (
-		facility_level *
-		facility_level *
-		3500
-	)
-
-	var staff_value = (
-		employees.size() * 750
-	)
-
-	var brand_value = (
-		reputation * 75 +
-		cups_won * 5000
-	)
-
-	return maxi(
-		0,
-		cash +
-		genetic_value +
-		asset_value +
-		staff_value +
-		brand_value
-	)
-
-
-func show_empire():
-	tycoon_boot()
-	clear_content()
-
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
-		make_label(
-			"SHOCKER OWNZ • EMPIRE HQ",
-			29,
-			RED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			facility_data().name,
-			20,
-			GOLD
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"NET WORTH  $%d" % business_value(),
-			24,
-			WHITE
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Cash $%d  •  Revenue $%d  •  Expenses $%d" % [
-				cash,
-				total_revenue,
-				total_expenses
-			],
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Staff %d  •  Payroll $%d  •  Cups %d  •  Project 0 Keepers %d" % [
-				employees.size(),
-				employee_payroll(),
-				cups_won,
-				keepers.size()
-			],
-			15,
-			MUTED
-		)
-	)
-
-	var actions = GridContainer.new()
-	actions.columns = 2
-	v.add_child(actions)
-
-	var empire_actions = [
-		["FACILITIES", show_facilities],
-		["EMPLOYEES", show_employees],
-		["SIDE MISSIONS", show_side_missions],
-		["DAILY", show_daily],
-		["RESEARCH", show_research],
-		["COMPETE", show_competitions],
-		["FINANCES", show_finances],
-		["GROW ROOM", show_grow]
-	]
-
-	for item in empire_actions:
-		var b = make_button(
-			item[0],
-			item[1]
-		)
-
-		b.custom_minimum_size = Vector2(
-			310,
-			48
-		)
-
-		actions.add_child(b)
-
-	if event_log.size() > 0:
-		v.add_child(
-			make_label(
-				"LATEST EMPIRE NEWS",
-				18,
-				RED
-			)
-		)
-
-		for i in range(
-			mini(
-				3,
-				event_log.size()
-			)
-		):
-			v.add_child(
-				make_label(
-					"• " +
-					str(
-						event_log[
-							event_log.size() - 1 - i
-						]
-					),
-					14,
-					MUTED
-				)
-			)
-
-
-func show_facilities():
-	tycoon_boot()
-	clear_content()
-
-	content.add_child(
-		make_label(
-			"FACILITY EMPIRE",
-			28,
-			RED
-		)
-	)
-
-	for i in range(
-		FACILITIES.size()
-	):
-		var f = FACILITIES[i]
-
-		var card = panel()
-		content.add_child(card)
-
-		var v = VBoxContainer.new()
-		card.add_child(v)
-
-		var status = "LOCKED"
-
-		if i < facility_level:
-			status = "OWNED"
-		elif i == facility_level:
-			status = "NEXT"
-
-		v.add_child(
-			make_label(
-				"%s • %s" % [
-					f.name,
-					status
-				],
-				19,
-				GOLD if i < facility_level else WHITE
-			)
-		)
-
-		v.add_child(
-			make_label(
-				"Capacity tier %d • Overhead $%d / 5 days" % [
-					f.slots,
-					f.overhead
-				],
-				14,
-				MUTED
-			)
-		)
-
-		if (
-			i == facility_level and
-			facility_level < FACILITIES.size()
-		):
-			var b = make_button(
-				"EXPAND • $%d" % f.cost,
-				func(idx = i):
-					buy_facility(idx)
-			)
-
-			b.disabled = (
-				level < int(f.unlock)
-			)
-
-			v.add_child(b)
-
-
-func buy_facility(idx: int):
-	if (
-		idx != facility_level or
-		idx >= FACILITIES.size()
-	):
-		return
-
-	var f = FACILITIES[idx]
-
-	if (
-		cash < int(f.cost) or
-		level < int(f.unlock)
-	):
-		return
-
-	cash -= int(f.cost)
-	total_expenses += int(f.cost)
-
-	facility_level += 1
-
-	room_two_unlocked = (
-		facility_level >= 2
-	)
-
-	event_log.append(
-		"Empire expanded into " +
-		str(f.name) +
-		"."
-	)
-
-	xp += 150 * facility_level
-	reputation += 10 * facility_level
-
-	level_up()
-	save_game()
-	tycoon_save_extension()
-	refresh_stats()
-	show_facilities()
-
-
-func show_employees():
-	tycoon_boot()
-	clear_content()
-
-	content.add_child(
-		make_label(
-			"EMPLOYEE MANAGEMENT",
-			28,
-			RED
-		)
-	)
-
-	content.add_child(
-		make_label(
-			"Staff strengthen your empire. Payroll is charged every 5 game days.",
-			14,
-			MUTED
-		)
-	)
-
-	for s in STAFF:
-		var card = panel()
-		content.add_child(card)
-
-		var v = VBoxContainer.new()
-		card.add_child(v)
-
-		var count := 0
-
-		for e in employees:
-			if e.get(
-				"role",
-				""
-			) == s.role:
-				count += 1
-
-		v.add_child(
-			make_label(
-				"%s • EMPLOYED %d" % [
-					s.role,
-					count
-				],
-				18,
-				WHITE
-			)
-		)
-
-		v.add_child(
-			make_label(
-				"%s • Hire $%d • Payroll $%d" % [
-					s.bonus,
-					s.hire,
-					s.pay
-				],
-				14,
-				MUTED
-			)
-		)
-
-		v.add_child(
-			make_button(
-				"HIRE " + str(s.role),
-				func(role = s.role):
-					hire_employee(role)
-			)
-		)
-
-
-func hire_employee(role: String):
-	for s in STAFF:
-		if s.role == role:
-			if cash < int(s.hire):
-				return
-
-			cash -= int(s.hire)
-			total_expenses += int(s.hire)
-
-			employees.append({
-				"role": s.role,
-				"pay": s.pay,
-				"skill": 1
-			})
-
-			reputation += 2
-
-			event_log.append(
-				"Hired a " +
-				role +
-				"."
-			)
-
-			save_game()
-			tycoon_save_extension()
-			refresh_stats()
-			show_employees()
-			return
-
-
-func process_tycoon_day():
-	tycoon_boot()
-
-	if day - last_bill_day >= 5:
-		var overhead = int(
-			facility_data().overhead
-		)
-
-		var payroll = employee_payroll()
-
-		var managers := 0
-
-		for e in employees:
-			if e.get(
-				"role",
-				""
-			) == "Facility Manager":
-				managers += 1
-
-		overhead = roundi(
-			overhead *
-			maxf(
-				0.70,
-				1.0 - managers * 0.05
-			)
-		)
-
-		if "r1" in research_owned:
-			overhead = roundi(
-				overhead * 0.90
-			)
-
-		var bill = (
-			overhead +
-			payroll
-		)
-
-		cash -= bill
-		total_expenses += bill
-		last_bill_day = day
-
-		event_log.append(
-			"Bills paid: -$%d." % bill
-		)
-
-	if (
-		day -
-		last_daily_reset >= 7
-	):
-		daily_claimed.clear()
-		last_daily_reset = day
-
-		event_log.append(
-			"Weekly challenges refreshed."
-		)
-
-	if rng.randf() < 0.13:
-		trigger_empire_event()
-
-	tycoon_save_extension()
-
-
-func trigger_empire_event():
-	var roll = rng.randi_range(
-		0,
-		5
-	)
-
-	match roll:
-		0:
-			var bonus = (
-				150 +
-				level * 40
-			)
-
-			cash += bonus
-			total_revenue += bonus
-
-			event_log.append(
-				"Surprise buyer bonus: +$%d." %
-				bonus
-			)
-
-		1:
-			var cost = (
-				75 +
-				facility_level * 40
-			)
-
-			cash -= cost
-			total_expenses += cost
-
-			event_log.append(
-				"Equipment repair: -$%d." %
-				cost
-			)
-
-		2:
-			reputation += 5
-
-			event_log.append(
-				"Word of mouth is spreading: +5 reputation."
-			)
-
-		3:
-			xp += 35
-			level_up()
-
-			event_log.append(
-				"Staff breakthrough: +35 XP."
-			)
-
-		4:
-			if keepers.size() > 0:
-				reputation += 8
-
-				event_log.append(
-					"Project 0 keeper gets attention: +8 reputation."
-				)
-
-		5:
-			var bonus = (
-				100 *
-				facility_level
-			)
-
-			cash += bonus
-			total_revenue += bonus
-
-			event_log.append(
-				"Local contract deposit: +$%d." %
-				bonus
-			)
-
-# ============================================================
-# ALPHA 0.11 — PART 2
-# SIDE MISSIONS + WEEKLY CHALLENGES
-# ============================================================
-
-
-func side_defs() -> Array:
-	var defs: Array = []
-
-	var types = [
-		["harvests", "Harvest Run"],
-		["rep", "Build The Name"],
-		["keepers", "Keeper Hunt"],
-		["mothers", "Mother Room"],
-		["crosses", "Breeding Order"],
-		["contracts", "Market Push"],
-		["cash", "Stack Capital"],
-		["level", "Grower Rank"]
-	]
-
-	for i in range(36):
-		var t = types[
-			i % types.size()
-		]
-
-		var tier = int(
-			i / 8
-		) + 1
-
-		var goal = tier
-
-		if t[0] == "harvests":
-			goal = tier * 3
-
-		elif t[0] == "rep":
-			goal = tier * 30
-
-		elif t[0] == "cash":
-			goal = tier * 5000
-
-		elif t[0] == "level":
-			goal = tier + 1
-
-		elif t[0] == "contracts":
-			goal = tier * 2
-
-		var id = "s%02d" % (
-			i + 1
-		)
-
-		defs.append({
-			"id": id,
-			"title":
-				str(t[1]) +
-				" " +
-				str(tier),
-			"desc":
-				"Build the empire and hit the target.",
-			"type": t[0],
-			"goal": goal,
-			"cash":
-				250 * tier +
-				i * 25,
-			"xp":
-				30 * tier
-		})
-
-	return defs
-
-
-func show_side_missions():
-	tycoon_boot()
-	clear_content()
-
-	content.add_child(
-		make_label(
-			"SIDE MISSIONS • %d/36" %
-				side_claimed.size(),
-			28,
-			RED
-		)
-	)
-
-	content.add_child(
-		make_label(
-			"Optional contracts, challenges and empire objectives.",
-			14,
-			GOLD
-		)
-	)
-
-	for m in side_defs():
-		var done = (
-			m.id in side_claimed
-		)
-
-		var val = mission_value(
-			m.type
-		)
-
-		var card = panel()
-		content.add_child(card)
-
-		var v = VBoxContainer.new()
-		card.add_child(v)
-
-		v.add_child(
-			make_label(
-				(
-					"✓ "
-					if done
-					else "◆ "
-				) +
-				m.title,
-				18,
-				GREEN
-				if done
-				else WHITE
-			)
-		)
-
-		v.add_child(
-			make_label(
-				"%s  •  %d/%d" % [
-					m.desc,
-					mini(
-						val,
-						int(m.goal)
-					),
-					m.goal
-				],
-				14,
-				MUTED
-			)
-		)
-
-		var bar = ProgressBar.new()
-
-		bar.max_value = int(
-			m.goal
-		)
-
-		bar.value = mini(
-			val,
-			int(m.goal)
-		)
-
-		bar.custom_minimum_size = Vector2(
-			0,
-			18
-		)
-
-		v.add_child(bar)
-
-		v.add_child(
-			make_label(
-				"REWARD • $%d + %d XP" % [
-					m.cash,
-					m.xp
-				],
-				14,
-				GOLD
-			)
-		)
-
-		if (
-			not done and
-			val >= int(m.goal)
-		):
-			v.add_child(
-				make_button(
-					"CLAIM SIDE MISSION",
-					func(id = m.id):
-						claim_side(id)
-				)
-			)
-
-
-func claim_side(id: String):
-	if id in side_claimed:
-		return
-
-	for m in side_defs():
-		if (
-			m.id == id and
-			mission_value(
-				m.type
-			) >= int(m.goal)
-		):
-			side_claimed.append(id)
-
-			cash += int(
-				m.cash
-			)
-
-			total_revenue += int(
-				m.cash
-			)
-
-			xp += int(
-				m.xp
-			)
-
-			reputation += 1
-
-			event_log.append(
-				"Side mission complete: " +
-				str(m.title) +
-				"."
-			)
-
-			level_up()
-			save_game()
-			tycoon_save_extension()
-			refresh_stats()
-			show_side_missions()
-			return
-
-
-func daily_defs() -> Array:
-	var scale = maxi(
-		1,
-		level
-	)
-
-	return [
-		{
-			"id": "d1",
-			"title": "Clock In",
-			"desc":
-				"Keep the operation moving for 2 more days.",
-			"type": "day",
-			"goal":
-				last_daily_reset + 2,
-			"cash":
-				150 * scale,
-			"xp": 25
-		},
-		{
-			"id": "d2",
-			"title": "Production Push",
-			"desc":
-				"Complete another harvest.",
-			"type": "harvests",
-			"goal":
-				maxi(
-					1,
-					mission_harvests + 1
-				),
-			"cash":
-				200 * scale,
-			"xp": 35
-		},
-		{
-			"id": "d3",
-			"title": "Build The Brand",
-			"desc":
-				"Push your reputation higher.",
-			"type": "rep",
-			"goal":
-				reputation + 5,
-			"cash":
-				250 * scale,
-			"xp": 40
-		}
-	]
-
-
-func show_daily():
-	tycoon_boot()
-	clear_content()
-
-	content.add_child(
-		make_label(
-			"WEEKLY CHALLENGES",
-			28,
-			RED
-		)
-	)
-
-	content.add_child(
-		make_label(
-			"New objectives refresh every 7 in-game days.",
-			14,
-			GOLD
-		)
-	)
-
-	for m in daily_defs():
-		var done = (
-			m.id in daily_claimed
-		)
-
-		var val = mission_value(
-			m.type
-		)
-
-		var card = panel()
-		content.add_child(card)
-
-		var v = VBoxContainer.new()
-		card.add_child(v)
-
-		v.add_child(
-			make_label(
-				(
-					"✓ "
-					if done
-					else "◆ "
-				) +
-				m.title,
-				18,
-				GREEN
-				if done
-				else WHITE
-			)
-		)
-
-		v.add_child(
-			make_label(
-				m.desc,
-				14,
-				MUTED
-			)
-		)
-
-		var bar = ProgressBar.new()
-
-		bar.max_value = int(
-			m.goal
-		)
-
-		bar.value = mini(
-			val,
-			int(m.goal)
-		)
-
-		bar.custom_minimum_size = Vector2(
-			0,
-			18
-		)
-
-		v.add_child(bar)
-
-		v.add_child(
-			make_label(
-				"%d/%d • REWARD $%d + %d XP" % [
-					mini(
-						val,
-						int(m.goal)
-					),
-					m.goal,
-					m.cash,
-					m.xp
-				],
-				14,
-				GOLD
-			)
-		)
-
-		if (
-			not done and
-			val >= int(m.goal)
-		):
-			v.add_child(
-				make_button(
-					"CLAIM CHALLENGE",
-					func(id = m.id):
-						claim_daily(id)
-				)
-			)
-
-
-func claim_daily(id: String):
-	if id in daily_claimed:
-		return
-
-	for m in daily_defs():
-		if (
-			m.id == id and
-			mission_value(
-				m.type
-			) >= int(m.goal)
-		):
-			daily_claimed.append(id)
-
-			cash += int(
-				m.cash
-			)
-
-			total_revenue += int(
-				m.cash
-			)
-
-			xp += int(
-				m.xp
-			)
-
-			reputation += 2
-
-			event_log.append(
-				"Weekly challenge complete: " +
-				str(m.title) +
-				"."
-			)
-
-			level_up()
-			save_game()
-			tycoon_save_extension()
-			refresh_stats()
-			show_daily()
-			return
-
-
-# ============================================================
-# RESEARCH SYSTEM
-# ============================================================
-
-
-func show_research():
-	tycoon_boot()
-	clear_content()
-
-	content.add_child(
-		make_label(
-			"PROJECT 0 • RESEARCH",
-			28,
-			RED
-		)
-	)
-
-	content.add_child(
-		make_label(
-			"Invest empire profits into permanent technology.",
-			14,
-			GOLD
-		)
-	)
-
-	for r in RESEARCH:
-		var owned = (
-			r.id in research_owned
-		)
-
-		var card = panel()
-		content.add_child(card)
-
-		var v = VBoxContainer.new()
-		card.add_child(v)
-
-		v.add_child(
-			make_label(
-				(
-					"✓ "
-					if owned
-					else "◆ "
-				) +
-				str(r.name),
-				18,
-				GREEN
-				if owned
-				else WHITE
-			)
-		)
-
-		v.add_child(
-			make_label(
-				str(r.desc),
-				14,
-				MUTED
-			)
-		)
-
-		if not owned:
-			v.add_child(
-				make_button(
-					"RESEARCH • $%d" %
-						r.cost,
-					func(id = r.id):
-						buy_research(id)
-				)
-			)
-
-
-func buy_research(id: String):
-	for r in RESEARCH:
-		if (
-			r.id == id and
-			id not in research_owned
-		):
-			if cash < int(
-				r.cost
-			):
-				return
-
-			cash -= int(
-				r.cost
-			)
-
-			total_expenses += int(
-				r.cost
-			)
-
-			research_owned.append(
-				id
-			)
-
-			xp += 100
-			reputation += 5
-
-			level_up()
-
-			event_log.append(
-				"Research complete: " +
-				str(r.name) +
-				"."
-			)
-
-			save_game()
-			tycoon_save_extension()
-			refresh_stats()
-			show_research()
-			return
-
-# ============================================================
-# ALPHA 0.11 — PART 3
-# COMPETITIONS + FINANCES + TYCOON SAVE SYSTEM
-# ============================================================
-
-
-func show_competitions():
-	tycoon_boot()
-	clear_content()
-
-	content.add_child(
-		make_label(
-			"PROJECT 0 • COMPETITION CIRCUIT",
-			28,
-			RED
-		)
-	)
-
-	content.add_child(
-		make_label(
-			"Put your best genetics against the competition.",
-			14,
-			GOLD
-		)
-	)
-
-	var events = [
-		{
-			"name": "Local Grow-Off",
-			"need": 1,
-			"fee": 250,
-			"q": 82,
-			"reward": 1500
-		},
-		{
-			"name": "Regional Genetics Cup",
-			"need": 2,
-			"fee": 1000,
-			"q": 88,
-			"reward": 6000
-		},
-		{
-			"name": "Project 0 Invitational",
-			"need": 4,
-			"fee": 5000,
-			"q": 94,
-			"reward": 25000
-		}
-	]
-
-	for e in events:
-		var card = panel()
-		content.add_child(card)
-
-		var v = VBoxContainer.new()
-		card.add_child(v)
-
-		v.add_child(
-			make_label(
-				str(e.name),
-				19,
-				GOLD
-			)
-		)
-
-		v.add_child(
-			make_label(
-				"Need %d keeper(s) • Entry $%d" % [
-					e.need,
-					e.fee
-				],
-				14,
-				MUTED
-			)
-		)
-
-		v.add_child(
-			make_label(
-				"Target Q%d • Prize $%d" % [
-					e.q,
-					e.reward
-				],
-				14,
-				WHITE
-			)
-		)
-
-		var enter = make_button(
-			"ENTER COMPETITION",
-			func(ev = e):
-				enter_competition(ev)
-		)
-
-		enter.disabled = (
-			cash < int(e.fee) or
-			keepers.size() < int(e.need)
-		)
-
-		v.add_child(enter)
-
-	content.add_child(
-		make_label(
-			"CAREER CUP WINS • %d" %
-				cups_won,
-			18,
-			RED
-		)
-	)
-
-
-func enter_competition(
-	e: Dictionary
-):
-	if (
-		cash < int(e.fee) or
-		keepers.size() < int(e.need)
-	):
-		return
-
-	cash -= int(e.fee)
-	total_expenses += int(e.fee)
-
-	var best := 0
-
-	for k in keepers:
-		best = maxi(
-			best,
-			int(
-				k.get(
-					"q",
-					0
-				)
-			)
-		)
-
-	var staff_bonus := 0
-
-	for emp in employees:
-		if emp.get(
-			"role",
-			""
-		) == "Genetics Researcher":
-			staff_bonus += 1
-
-	var research_bonus := 0
-
-	if "r3" in research_owned:
-		research_bonus = 2
-
-	var score = (
-		best +
-		staff_bonus +
-		research_bonus +
-		rng.randi_range(
-			-3,
-			5
-		)
-	)
-
-	if score >= int(e.q):
-		cash += int(
-			e.reward
-		)
-
-		total_revenue += int(
-			e.reward
-		)
-
-		cups_won += 1
-		reputation += 20
-		xp += 200
-
-		event_log.append(
-			"CUP WINNER: " +
-				str(e.name) +
-				"!"
-		)
-
-		unlock_achievement(
-			"Cup Winner"
-		)
-
-	else:
-		reputation += 2
-		xp += 25
-
-		event_log.append(
-			"Strong showing at " +
-				str(e.name) +
-				"."
-		)
-
-	level_up()
-	save_game()
-	tycoon_save_extension()
-	refresh_stats()
-	show_competitions()
-
-
-# ============================================================
-# BUSINESS FINANCE DASHBOARD
-# ============================================================
-
-
-func show_finances():
-	tycoon_boot()
-	clear_content()
-
-	var p = panel()
-	content.add_child(p)
-
-	var v = VBoxContainer.new()
-	p.add_child(v)
-
-	v.add_child(
-		make_label(
-			"BUSINESS FINANCES",
-			28,
-			RED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			facility_data().name,
-			17,
-			GOLD
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Cash On Hand",
-			14,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"$%d" % cash,
-			30,
-			WHITE
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"LIFETIME REVENUE • $%d" %
-				total_revenue,
-			17,
-			GREEN
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"LIFETIME EXPENSES • $%d" %
-				total_expenses,
-			17,
-			RED
-		)
-	)
-
-	var profit = (
-		total_revenue -
-		total_expenses
-	)
-
-	v.add_child(
-		make_label(
-			"LIFETIME PROFIT • $%d" %
-				profit,
-			17,
-			GOLD
-			if profit >= 0
-			else RED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"BUSINESS VALUATION",
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"$%d" %
-				business_value(),
-			27,
-			GOLD
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Facility overhead • $%d every 5 days" %
-				int(
-					facility_data().overhead
-				),
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Employee payroll • $%d every 5 days" %
-				employee_payroll(),
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Employees • %d" %
-				employees.size(),
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Cup Championships • %d" %
-				cups_won,
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_label(
-			"Project 0 Keepers • %d" %
-				keepers.size(),
-			15,
-			MUTED
-		)
-	)
-
-	v.add_child(
-		make_button(
-			"BACK TO EMPIRE HQ",
-			show_empire
-		)
-	)
-
-
-# ============================================================
-# TYCOON SAVE / LOAD
-# ============================================================
-
-
-func tycoon_save_extension():
+func tycoon_save():
 	var data = {
-		"total_revenue":
-			total_revenue,
-
-		"total_expenses":
-			total_expenses,
-
-		"employees":
-			employees,
-
-		"side_claimed":
-			side_claimed,
-
-		"daily_claimed":
-			daily_claimed,
-
-		"research_owned":
-			research_owned,
-
-		"cups_won":
-			cups_won,
-
-		"event_log":
-			event_log,
-
-		"last_bill_day":
-			last_bill_day,
-
-		"last_daily_reset":
-			last_daily_reset
+		"total_revenue": total_revenue,
+		"total_expenses": total_expenses,
+		"employees": employees,
+		"side_claimed": side_claimed,
+		"weekly_claimed": weekly_claimed,
+		"research_owned": research_owned,
+		"cups_won": cups_won,
+		"event_log": event_log,
+		"last_bill_day": last_bill_day,
+		"weekly_start_day": weekly_start_day,
+		"weekly_harvest_start": weekly_harvest_start,
+		"weekly_rep_start": weekly_rep_start
 	}
 
 	var f = FileAccess.open(
-		"user://grow_empire_tycoon.json",
+		TYCOON_SAVE_PATH,
 		FileAccess.WRITE
 	)
 
 	if f:
-		f.store_string(
-			JSON.stringify(
-				data
-			)
-		)
+		f.store_string(JSON.stringify(data))
 
 
-func tycoon_load_extension():
-	if not FileAccess.file_exists(
-		"user://grow_empire_tycoon.json"
-	):
+func tycoon_load():
+	if not FileAccess.file_exists(TYCOON_SAVE_PATH):
+		last_bill_day = day
+		weekly_start_day = day
+		weekly_harvest_start = mission_harvests
+		weekly_rep_start = reputation
 		return
 
 	var f = FileAccess.open(
-		"user://grow_empire_tycoon.json",
+		TYCOON_SAVE_PATH,
 		FileAccess.READ
 	)
 
 	if not f:
 		return
 
-	var d = JSON.parse_string(
-		f.get_as_text()
-	)
+	var d = JSON.parse_string(f.get_as_text())
 
 	if typeof(d) != TYPE_DICTIONARY:
 		return
 
-	total_revenue = int(
-		d.get(
-			"total_revenue",
-			0
-		)
+	total_revenue = int(d.get("total_revenue", 0))
+	total_expenses = int(d.get("total_expenses", 0))
+	employees = d.get("employees", [])
+	side_claimed = d.get("side_claimed", [])
+	weekly_claimed = d.get("weekly_claimed", [])
+	research_owned = d.get("research_owned", [])
+	cups_won = int(d.get("cups_won", 0))
+	event_log = d.get("event_log", [])
+	last_bill_day = int(d.get("last_bill_day", day))
+	weekly_start_day = int(d.get("weekly_start_day", day))
+	weekly_harvest_start = int(
+		d.get("weekly_harvest_start", mission_harvests)
 	)
-
-	total_expenses = int(
-		d.get(
-			"total_expenses",
-			0
-		)
-	)
-
-	employees = d.get(
-		"employees",
-		[]
-	)
-
-	side_claimed = d.get(
-		"side_claimed",
-		[]
-	)
-
-	daily_claimed = d.get(
-		"daily_claimed",
-		[]
-	)
-
-	research_owned = d.get(
-		"research_owned",
-		[]
-	)
-
-	cups_won = int(
-		d.get(
-			"cups_won",
-			0
-		)
-	)
-
-	event_log = d.get(
-		"event_log",
-		[]
-	)
-
-	last_bill_day = int(
-		d.get(
-			"last_bill_day",
-			day
-		)
-	)
-
-	last_daily_reset = int(
-		d.get(
-			"last_daily_reset",
-			day
-		)
+	weekly_rep_start = int(
+		d.get("weekly_rep_start", reputation)
 	)
