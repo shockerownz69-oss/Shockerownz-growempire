@@ -619,7 +619,6 @@ func show_empire():
 				)
 			)
 
-
 func show_facilities():
 	clear_content()
 
@@ -637,7 +636,6 @@ func show_facilities():
 
 		if i<facility_level:
 			status="OWNED"
-
 		elif i==facility_level:
 			status="NEXT"
 
@@ -1023,45 +1021,102 @@ func discover_traits(
 	p["genome"]=genome
 
 
-func migrate_genetics():
-	for p in plants:
-		if not p.has("genome"):
-			p["genome"]=new_genome(
-				str(
-					p.get(
-						"name",
-						"Unknown"
-					)
-				)
-			)
+func safe_migrate_genetics():
+	var changed=false
 
-	for m in mothers:
-		if not m.has("genome"):
-			m["genome"]=new_genome(
-				str(
-					m.get(
-						"name",
-						"Unknown"
-					)
-				)
-			)
+	for i in range(plants.size()):
+		if typeof(plants[i])!=TYPE_DICTIONARY:
+			continue
 
-	for k in keepers:
-		if not k.has("genome"):
-			k["genome"]=new_genome(
-				str(
-					k.get(
-						"name",
-						"Unknown"
-					)
-				)
-			)
+		var p:Dictionary=plants[i]
 
-	for c in crosses:
+		if not p.has("name"):
+			p["name"]="Unknown"
+
+		if not p.has("genome") or typeof(p["genome"])!=TYPE_DICTIONARY:
+			p["genome"]=new_genome(str(p.get("name","Unknown")))
+			changed=true
+		else:
+			var genome:Dictionary=p["genome"]
+
+			if not genome.has("stats") or typeof(genome["stats"])!=TYPE_DICTIONARY:
+				p["genome"]=new_genome(str(p.get("name","Unknown")))
+				changed=true
+
+		plants[i]=p
+
+
+	for i in range(mothers.size()):
+		if typeof(mothers[i])!=TYPE_DICTIONARY:
+			continue
+
+		var m:Dictionary=mothers[i]
+
+		if not m.has("name"):
+			m["name"]="Unknown"
+
+		if not m.has("genome") or typeof(m["genome"])!=TYPE_DICTIONARY:
+			m["genome"]=new_genome(str(m.get("name","Unknown")))
+			changed=true
+		else:
+			var genome:Dictionary=m["genome"]
+
+			if not genome.has("stats") or typeof(genome["stats"])!=TYPE_DICTIONARY:
+				m["genome"]=new_genome(str(m.get("name","Unknown")))
+				changed=true
+
+		mothers[i]=m
+
+
+	for i in range(keepers.size()):
+		if typeof(keepers[i])!=TYPE_DICTIONARY:
+			continue
+
+		var k:Dictionary=keepers[i]
+
+		if not k.has("name"):
+			k["name"]="Unknown"
+
+		if not k.has("genome") or typeof(k["genome"])!=TYPE_DICTIONARY:
+			k["genome"]=new_genome(str(k.get("name","Unknown")))
+			changed=true
+		else:
+			var genome:Dictionary=k["genome"]
+
+			if not genome.has("stats") or typeof(genome["stats"])!=TYPE_DICTIONARY:
+				k["genome"]=new_genome(str(k.get("name","Unknown")))
+				changed=true
+
+		keepers[i]=k
+
+
+	for i in range(crosses.size()):
+		if typeof(crosses[i])!=TYPE_DICTIONARY:
+			continue
+
+		var c:Dictionary=crosses[i]
+
 		if not c.has("generation"):
 			c["generation"]="F1"
+			changed=true
 
-	save_all()
+		if not c.has("parents"):
+			c["parents"]=[]
+			changed=true
+
+		if not c.has("stability"):
+			c["stability"]=60
+			changed=true
+
+		if not c.has("seeds"):
+			c["seeds"]=0
+			changed=true
+
+		crosses[i]=c
+
+
+	if changed:
+		save_all()
 
 
 func record_genetic(p:Dictionary):
@@ -1747,7 +1802,6 @@ func quality(p:Dictionary)->int:
 		100
 	)
 
-
 func create_plant(
 	name:String,
 	days:int,
@@ -2011,7 +2065,6 @@ func train_plant(i:int):
 		reputation+=1
 		save_all()
 		show_grow()
-
 
 func treat_plant(i:int):
 	if i>=0 and i<plants.size() and cash>=25:
@@ -2338,8 +2391,6 @@ func cure_day(i:int):
 
 	save_all()
 	show_cure()
-
-
 func sale_value(c:Dictionary)->int:
 	var v=roundi(
 		int(c["grams"])*
@@ -2914,8 +2965,6 @@ func show_missions():
 						claim_campaign_mission(id)
 				)
 			)
-
-
 func claim_campaign_mission(id:String):
 	if id in mission_claimed:
 		return
@@ -3283,7 +3332,6 @@ func buy_research(id:String):
 			show_research()
 			return
 
-
 func show_competitions():
 	clear_content()
 
@@ -3605,7 +3653,6 @@ func unlock_achievement(id:String):
 	if id not in achievements:
 		achievements.append(id)
 
-
 func show_achievements():
 	clear_content()
 
@@ -3672,6 +3719,33 @@ func show_achievements():
 			show_empire
 		)
 	)
+
+
+func safe_array(value)->Array:
+	if typeof(value)==TYPE_ARRAY:
+		return value
+
+	return []
+
+
+func safe_dictionary(value)->Dictionary:
+	if typeof(value)==TYPE_DICTIONARY:
+		return value
+
+	return {}
+
+
+func dictionary_items_only(value)->Array:
+	var result:Array=[]
+
+	if typeof(value)!=TYPE_ARRAY:
+		return result
+
+	for item in value:
+		if typeof(item)==TYPE_DICTIONARY:
+			result.append(item)
+
+	return result
 
 
 func save_all():
@@ -3751,10 +3825,13 @@ func load_game():
 		)
 	)
 
-	level=int(
-		d.get(
-			"level",
-			1
+	level=maxi(
+		1,
+		int(
+			d.get(
+				"level",
+				1
+			)
 		)
 	)
 
@@ -3765,77 +3842,108 @@ func load_game():
 		)
 	)
 
-	day=int(
-		d.get(
-			"day",
-			1
+	day=maxi(
+		1,
+		int(
+			d.get(
+				"day",
+				1
+			)
 		)
 	)
 
-	plants=d.get(
-		"plants",
-		[]
-	)
-
-	keepers=d.get(
-		"keepers",
-		[]
-	)
-
-	mothers=d.get(
-		"mothers",
-		[]
-	)
-
-	crosses=d.get(
-		"crosses",
-		[]
-	)
-
-	seed_inventory=d.get(
-		"seed_inventory",
-		[]
-	)
-
-	inventory=d.get(
-		"inventory",
-		[]
-	)
-
-	cured_inventory=d.get(
-		"cured_inventory",
-		[]
-	)
-
-	achievements=d.get(
-		"achievements",
-		[]
-	)
-
-	mission_claimed=d.get(
-		"mission_claimed",
-		[]
-	)
-
-	mission_harvests=int(
+	plants=dictionary_items_only(
 		d.get(
-			"mission_harvests",
-			0
+			"plants",
+			[]
 		)
 	)
 
-	contracts_completed=int(
+	keepers=dictionary_items_only(
 		d.get(
-			"contracts_completed",
-			0
+			"keepers",
+			[]
 		)
 	)
 
-	facility_level=int(
+	mothers=dictionary_items_only(
 		d.get(
-			"facility_level",
-			1
+			"mothers",
+			[]
 		)
+	)
+
+	crosses=dictionary_items_only(
+		d.get(
+			"crosses",
+			[]
+		)
+	)
+
+	seed_inventory=dictionary_items_only(
+		d.get(
+			"seed_inventory",
+			[]
+		)
+	)
+
+	inventory=dictionary_items_only(
+		d.get(
+			"inventory",
+			[]
+		)
+	)
+
+	cured_inventory=dictionary_items_only(
+		d.get(
+			"cured_inventory",
+			[]
+		)
+	)
+
+	achievements=safe_array(
+		d.get(
+			"achievements",
+			[]
+		)
+	)
+
+	mission_claimed=safe_array(
+		d.get(
+			"mission_claimed",
+			[]
+		)
+	)
+
+	mission_harvests=maxi(
+		0,
+		int(
+			d.get(
+				"mission_harvests",
+				0
+			)
+		)
+	)
+
+	contracts_completed=maxi(
+		0,
+		int(
+			d.get(
+				"contracts_completed",
+				0
+			)
+		)
+	)
+
+	facility_level=clampi(
+		int(
+			d.get(
+				"facility_level",
+				1
+			)
+		),
+		1,
+		FACILITIES.size()
 	)
 
 	room_two_unlocked=bool(
@@ -3845,29 +3953,67 @@ func load_game():
 		)
 	)
 
-	owned_upgrades=d.get(
-		"upgrades",
-		owned_upgrades
-	)
-
-	trait_codex=d.get(
-		"trait_codex",
-		[]
-	)
-
-	genetic_records=d.get(
-		"genetic_records",
-		{}
-	)
-
-	phenotype_counter=int(
+	owned_upgrades=safe_dictionary(
 		d.get(
-			"phenotype_counter",
-			0
+			"upgrades",
+			owned_upgrades
+		)
+	)
+
+	if not owned_upgrades.has(
+		"LED Upgrade"
+	):
+		owned_upgrades[
+			"LED Upgrade"
+		]=false
+
+	if not owned_upgrades.has(
+		"Environment Controller"
+	):
+		owned_upgrades[
+			"Environment Controller"
+		]=false
+
+	trait_codex=safe_array(
+		d.get(
+			"trait_codex",
+			[]
+		)
+	)
+
+	genetic_records=safe_dictionary(
+		d.get(
+			"genetic_records",
+			{}
+		)
+	)
+
+	phenotype_counter=maxi(
+		0,
+		int(
+			d.get(
+				"phenotype_counter",
+				0
+			)
 		)
 	)
 
 	for p in plants:
+		if not p.has("name"):
+			p["name"]="Unknown"
+
+		if not p.has("age"):
+			p["age"]=0
+
+		if not p.has("days"):
+			p["days"]=8
+
+		if not p.has("base"):
+			p["base"]=230
+
+		if not p.has("traits"):
+			p["traits"]=[]
+
 		if not p.has("water"):
 			p["water"]=100
 
@@ -3882,6 +4028,12 @@ func load_game():
 
 		if not p.has("problem"):
 			p["problem"]=""
+
+		if not p.has("parents"):
+			p["parents"]=[]
+
+		if not p.has("generation"):
+			p["generation"]="Seed"
 
 
 func tycoon_save():
@@ -3934,6 +4086,10 @@ func tycoon_load():
 	)
 
 	if typeof(d)!=TYPE_DICTIONARY:
+		last_bill_day=day
+		weekly_start_day=day
+		weekly_harvest_start=mission_harvests
+		weekly_rep_start=reputation
 		return
 
 	total_revenue=int(
@@ -3950,36 +4106,67 @@ func tycoon_load():
 		)
 	)
 
-	employees=d.get(
-		"employees",
-		[]
-	)
-
-	side_claimed=d.get(
-		"side_claimed",
-		[]
-	)
-
-	weekly_claimed=d.get(
-		"weekly_claimed",
-		[]
-	)
-
-	research_owned=d.get(
-		"research_owned",
-		[]
-	)
-
-	cups_won=int(
+	employees=dictionary_items_only(
 		d.get(
-			"cups_won",
-			0
+			"employees",
+			[]
 		)
 	)
 
-	event_log=d.get(
-		"event_log",
-		[]
+	var clean_employees:Array=[]
+
+	for item in employees:
+		var e:Dictionary=item
+
+		if not e.has("role"):
+			continue
+
+		if not e.has("pay"):
+			e["pay"]=0
+
+		if not e.has("skill"):
+			e["skill"]=50
+
+		clean_employees.append(e)
+
+	employees=clean_employees
+
+	side_claimed=safe_array(
+		d.get(
+			"side_claimed",
+			[]
+		)
+	)
+
+	weekly_claimed=safe_array(
+		d.get(
+			"weekly_claimed",
+			[]
+		)
+	)
+
+	research_owned=safe_array(
+		d.get(
+			"research_owned",
+			[]
+		)
+	)
+
+	cups_won=maxi(
+		0,
+		int(
+			d.get(
+				"cups_won",
+				0
+			)
+		)
+	)
+
+	event_log=safe_array(
+		d.get(
+			"event_log",
+			[]
+		)
 	)
 
 	last_bill_day=int(
@@ -4009,3 +4196,5 @@ func tycoon_load():
 			reputation
 		)
 	)
+
+
