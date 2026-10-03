@@ -228,14 +228,19 @@ const MUTATIONS=[
 func _ready():
 	rng.randomize()
 
-	load_game()
-	tycoon_load()
-
 	build_ui()
 	show_title()
 
-	call_deferred("safe_migrate_genetics")
+	call_deferred("finish_startup")
 
+
+func finish_startup():
+	load_game()
+	tycoon_load()
+	safe_migrate_genetics()
+
+	refresh_stats()
+	show_title()
 
 func make_label(
 	text:String,
